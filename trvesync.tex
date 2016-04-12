@@ -75,7 +75,7 @@ Applying an $\mathsf{insert}$ operation is like inserting an element into a link
 
 The operation $\mathsf{delete}(\mathit{id})$ is an instruction to delete the element with ID $\mathit{id}$ from the list. The operation has the following semantics:
 \begin{align*}
-A' &= \mathrm{apply}(\mathsf{delete}(\mathit{id})) \\ &=
+A' &= \mathrm{apply}(A, \mathsf{delete}(\mathit{id})) \\ &=
 A[\,\mathit{id} \mapsto (\bot, n)\,]
 \quad\text{if }\; A(\mathit{id}) = (\placeholder, n)
 \end{align*}
@@ -89,6 +89,39 @@ The user view of a list A iterates over the list elements from $\mathsf{head}$ t
     [\,] & \text{if }\; \mathit{id} = \mathsf{tail}
 \end{cases}
 \end{align*}
+
+\subsection{Convergence}
+
+We now prove the convergence property, also known as \emph{eventual consistency}, for this data structure.
+
+\textbf{Theorem.} If any two peers process the same set of $\mathsf{insert}$ and $\mathsf{delete}$ operations, in any causally consistent order (but not necessarily the same order), then their final states are identical.
+
+\textbf{Proof.} Each peer processes operations in some sequential order, and the state of a peer is modified only by operations. Therefore, we can derive the state of peer $p$ from the history of operations $H_p=o_1 \dots o_n$ applied at that peer, processed in the order of the history:
+$$ A_{H_p} = \mathrm{apply}(\mathrm{apply}(\dots \mathrm{apply}(A_\emptyset, o_1), \dots, o_{n-1}), o_n). $$
+
+We can prove the theorem by induction over the length of the history $n$.
+
+\emph{Base case:} A history of $n=0$ operations describes an empty document. An empty document is deterministically defined, so any two peers that have not executed any operations are by definition in the same state.
+
+\emph{Induction step:} Given causal histories $H_1$ and $H_2$ of length $n$, such that $H_1=o_1 \dots o_n$ and $H_2$ is a permutation of $H_1$, and such that applying $H_1$ results in the same state as applying $H_2$, we can construct new histories of length $n+1$ by inserting an operation $o_{n+1}$ at any causally ready position in either $H_1$ or $H_2$. We must then show that for all of the histories constructed this way, applying the operations results in the same final state.
+
+We show the induction step case by case, considering each type of operation $o_{n+1}$ that may be inserted.
+
+\subsubsection{Commutativity of deletion}
+
+First consider the case that $o_{n+1}=\mathsf{delete}(\mathit{id})$. A list element can only be deleted if it exists in the list, so by causality, there must exist an operation $o_i=\mathsf{insert}(\mathit{id}, \placeholder, \placeholder)$ at a prior point in the history. Moreover, the Lamport timestamp used as $\mathit{id}$ is unique, so there must be exactly one such $\mathsf{insert}$ operation, and there cannot be any $\mathsf{insert}$ operation for the same $\mathit{id}$ at a point after $o_{n+1}$ in the history.
+
+Note that applying $\mathsf{delete}(\mathit{id})$ modifies only the mapping for $A(\mathit{id})$, and otherwise leaves the state $A$ unchanged, so it is trivially commutative with respect to any operation that does not modify or depend on $A(\mathit{id})$.
+
+The first kind of operation that can modify the same $A(\mathit{id})$ is a $\mathsf{delete}$ operation for the same list element $\mathit{id}$. As the rule for applying this operation is idempotent, the presence of any other $\mathsf{delete}(\mathit{id})$ operations before or after $o_{n+1}$ in the history does not have any effect on the final state.
+
+We showed that an $\mathsf{insert}(\mathit{id}, \placeholder, \placeholder)$ operation can only occur prior to $\mathsf{delete}(\mathit{id})$. Thus, the only other kind of operation that can depend on or modify $A(\mathit{id})$ is an $\mathsf{insert}(\placeholder, \mathit{id}, \placeholder)$ operation, or a recursive call to the $\mathrm{apply}$ function that uses such an operation internally. Note that when applying such an $\mathsf{insert}$ operation, the queries for $A(\mathit{prev})$ ignore the $\mathit{value}$ element of the tuple and leave it unchanged, and only examine and modify the $\mathit{next}$ element of the tuple. By contrast, applying $\mathsf{delete}(\mathit{id})$ modifies only the $\mathit{value}$ element of $A(\mathit{id})$, and leaves the $\mathit{next}$ element unchanged.
+
+Thus, if $o_{n+1}=\mathsf{delete}(\mathit{id})$ is inserted at any causally ready point in a history, the final state does not depend on the insertion point, because the inserted operation does not interact with any prior or following operations.
+
+\subsubsection{Commutativity of insertion}
+
+Now consider the case that $o_{n+1}=\mathsf{insert}(\mathit{id}, \mathit{prev}, v)$.
 
 {\footnotesize
 \bibliographystyle{plainnat}
