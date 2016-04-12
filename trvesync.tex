@@ -34,24 +34,59 @@ CRDTs~\cite{Shapiro:2011wy,Roh:2011dw}
 
 \section{Operational Semantics}
 
+We assume that each peer has a unique identifier (for example, the hash of its public key). Whenever an edit to a document is made at one of the peers, we generate a unique identifier for that edit operation using Lamport timestamps~\cite{Lamport:1978jq}.
+
+A Lamport timestamp is a pair $(c, p)$ where $p$ is the unique identifier of the peer on which the edit is made. $c$ is a counter that is stored at each peer and incremented for every operation. Whenever an operation is sent to other peers, the Lamport timestamp $(c, p)$ for that operation is included in the message.
+
+If a peer receives an operation with a counter value $c$ that is greater than the locally stored counter value, the local counter is increased to the value of the incoming counter. This ensures that if operation $o_1$ happened before $o_2$ (that is, the peer that generated $o_2$ had received and processed $o_1$ before $o_2$ was generated), then $o_2$ must have a greater counter value than $o_1$. Only concurrent operations can have equal counter values.
+
+We can thus define a total ordering $<$ for Lamport timestamps:
+$$(c_1, p_1) < (c_2, p_2) \;\text{ iff }\; (c_1 < c_2) \vee (c_1 = c_2 \wedge p_1 < p_2).$$
+If one operation happened before another, this ordering is consistent with causality (the earlier operation has a lower timesetamp). If two operations are concurrent, their order according to $<$ is arbitrary but deterministic.
+
+\subsection{Ordered List Operations}
+
 The \emph{Replicated Growable Array} (RGA) datatype was originally defined by Roh et al.\ using pseudocode~\cite{Roh:2011dw}. In this section we present the algorithm in an alternative form which is more amenable to correctness proofs.
 
-Each peer that maintains a replica of an RGA stores a copy of its state $A$, which is a partial function from $\mathit{id}$ to pairs of $(\mathit{value}, \mathit{next})$. The empty list $A_\emptyset$ is represented as a function whose domain is the single value $\mathsf{head}$:
-$$ A_\emptyset = \{\mathsf{head} \mapsto (\bot, \mathsf{tail})\} $$
-where $\mathsf{head}$ and $\mathsf{tail}$ are special IDs denoting the head and tail of the list, respectively, and $\bot$ denotes the absence of a value.
+Each peer that maintains a replica of an RGA stores a copy of its state $A$, which is a partial function from $\mathit{id}$ to pairs of $(\mathit{value}, \mathit{next})$. The parameter $\mathit{id}$ is either a Lamport timestamp or the special symbol $\mathsf{head}$, indicating the head of the list. $\mathit{next}$ is either a Lamport timestamp or the symbol $\mathsf{tail}$, denoting the end of the list. $\mathit{value}$ is any value of the datatype of list elements, or the special value $\bot$, indicating the absence of a value.
+
+The empty list $A_\emptyset$ is represented as a function whose domain is the single value $\mathsf{head}$:
+$$ A_\emptyset = \{\mathsf{head} \mapsto (\bot, \mathsf{tail})\}. $$
 
 We use the notation $A[\,a \mapsto (b, c)\,]$ to denote a function identical to $A$, except that $A(a)=(b,c)$.
+
+A list element is created with an $\mathsf{insert}$ operation. Since each operation has a Lamport timestamp, a list element is uniquely identified by its timestamp, which remains immutable for the lifetime of the document. We call that Lamport timestamp the ID of the list element.
 
 The operation $\mathsf{insert}(\mathit{id}, \mathit{prev}, v)$ is an instruction to insert the value $v$ into a list at a position following the existing list element with ID $\mathit{prev}$. An insertion at the head of the list is expressed as $\mathsf{insert}(\mathit{id}, \mathsf{head}, v)$. The $\mathit{id}$ is the unique ID of this operation.
 
 When the operation is applied to the list state $A$, it produces a modified list state $A'$ as follows:
 \begin{align*}
-A' &= \mathrm{apply}(A, \mathsf{insert}(\mathit{id}, \mathit{prev}, v)) = \\ &=
+A' &= \mathrm{apply}(A, \mathsf{insert}(\mathit{id}, \mathit{prev}, v)) \\ &=
 \begin{cases}
 \quad \mathrm{apply}(A, \mathsf{insert}(\mathit{id}, n, v)) \\
-    \qquad\text{if }\; A(\mathit{prev}) = (\placeholder, n) \;\wedge\; \mathit{id} < n \\
+    \qquad\quad\text{if }\; A(\mathit{prev}) = (\placeholder, n) \;\wedge\; \mathit{id} < n \\
 \quad A[\,\mathit{prev} \mapsto (v_p, \mathit{id}),\; \mathit{id} \mapsto (v, n)\,] \\
-    \qquad\text{if }\; A(\mathit{prev}) = (v_p, n) \;\wedge\; n < \mathit{id}
+    \qquad\quad\text{if }\; A(\mathit{prev}) = (v_p, n) \;\wedge\; n < \mathit{id}
+\end{cases}
+\end{align*}
+where $<$ is the total order on Lamport timestamps, with the additional requirement that $\mathsf{tail} < (c, p)$ for any Lamport timestamp $(c, p)$.
+
+Applying an $\mathsf{insert}$ operation is like inserting an element into a linked list, except that the function first skips over list elements with an ID greater than the ID of the new element being inserted. This has the effect of deterministically ordering concurrent insertions made at the same position of the list. This property is proved formally below.
+
+The operation $\mathsf{delete}(\mathit{id})$ is an instruction to delete the element with ID $\mathit{id}$ from the list. The operation has the following semantics:
+\begin{align*}
+A' &= \mathrm{apply}(\mathsf{delete}(\mathit{id})) \\ &=
+A[\,\mathit{id} \mapsto (\bot, n)\,]
+\quad\text{if }\; A(\mathit{id}) = (\placeholder, n)
+\end{align*}
+
+The user view of a list A iterates over the list elements from $\mathsf{head}$ to $\mathsf{tail}$, skipping any deleted elements (tombstones):
+\begin{align*}
+\mathrm{view}(A) &= \mathrm{itr}(A, \mathsf{head}) \\
+\mathrm{itr}(A, \mathit{id}) &= \begin{cases}
+    [v] \mathbin{::} \mathrm{itr}(A, n) & \text{if }\; A(\mathit{id}) = (v, n) \;\wedge\; v \neq \bot \\
+                     \mathrm{itr}(A, n) & \text{if }\; A(\mathit{id}) = (v, n) \;\wedge\; v = \bot \\
+    [\,] & \text{if }\; \mathit{id} = \mathsf{tail}
 \end{cases}
 \end{align*}
 
