@@ -1,5 +1,6 @@
 \documentclass[a4paper,twocolumn,10pt]{article}
 \usepackage[utf8]{inputenc}
+\usepackage{amsmath} % align environment
 \usepackage{mathptmx} % times roman, including math
 \usepackage[hyphens]{url}
 \usepackage{doi}
@@ -7,6 +8,17 @@
 \usepackage[numbers,sort]{natbib}
 \hyphenation{da-ta-cen-ter da-ta-cen-ters}
 \frenchspacing
+
+% Placeholder character like \textvisiblespace, but works in math mode
+\newcommand\placeholder{%
+  \makebox[0.7em]{%
+    \kern.07em
+    \vrule height.3ex
+    \hrulefill
+    \vrule height.3ex
+    \kern.07em
+  }%
+}
 
 \begin{document}
 \sloppy
@@ -18,7 +30,30 @@
 
 \section{Introduction}
 
-\cite{Shapiro:2011wy,Roh:2011dw}
+CRDTs~\cite{Shapiro:2011wy,Roh:2011dw}
+
+\section{Operational Semantics}
+
+The \emph{Replicated Growable Array} (RGA) datatype was originally defined by Roh et al.\ using pseudocode~\cite{Roh:2011dw}. In this section we present the algorithm in an alternative form which is more amenable to correctness proofs.
+
+Each peer that maintains a replica of an RGA stores a copy of its state $A$, which is a partial function from $\mathit{id}$ to pairs of $(\mathit{value}, \mathit{next})$. The empty list $A_\emptyset$ is represented as a function whose domain is the single value $\mathsf{head}$:
+$$ A_\emptyset = \{\mathsf{head} \mapsto (\bot, \mathsf{tail})\} $$
+where $\mathsf{head}$ and $\mathsf{tail}$ are special IDs denoting the head and tail of the list, respectively, and $\bot$ denotes the absence of a value.
+
+We use the notation $A[\,a \mapsto (b, c)\,]$ to denote a function identical to $A$, except that $A(a)=(b,c)$.
+
+The operation $\mathsf{insert}(\mathit{id}, \mathit{prev}, v)$ is an instruction to insert the value $v$ into a list at a position following the existing list element with ID $\mathit{prev}$. An insertion at the head of the list is expressed as $\mathsf{insert}(\mathit{id}, \mathsf{head}, v)$. The $\mathit{id}$ is the unique ID of this operation.
+
+When the operation is applied to the list state $A$, it produces a modified list state $A'$ as follows:
+\begin{align*}
+A' &= \mathrm{apply}(A, \mathsf{insert}(\mathit{id}, \mathit{prev}, v)) = \\ &=
+\begin{cases}
+\quad \mathrm{apply}(A, \mathsf{insert}(\mathit{id}, n, v)) \\
+    \qquad\text{if }\; A(\mathit{prev}) = (\placeholder, n) \;\wedge\; \mathit{id} < n \\
+\quad A[\,\mathit{prev} \mapsto (v_p, \mathit{id}),\; \mathit{id} \mapsto (v, n)\,] \\
+    \qquad\text{if }\; A(\mathit{prev}) = (v_p, n) \;\wedge\; n < \mathit{id}
+\end{cases}
+\end{align*}
 
 {\footnotesize
 \bibliographystyle{plainnat}
