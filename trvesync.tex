@@ -2,6 +2,7 @@
 \usepackage[utf8]{inputenc}
 \usepackage{amsmath} % align environment
 \usepackage{mathptmx} % times roman, including math
+\usepackage{bussproofs} % notation for inference rules
 \usepackage[hyphens]{url}
 \usepackage{doi}
 \usepackage{hyperref}
@@ -9,8 +10,10 @@
 \hyphenation{da-ta-cen-ter da-ta-cen-ters time-stamp}
 \frenchspacing
 
+\newcommand{\evalto}{\;\Longrightarrow\;}
+
 % Placeholder character like \textvisiblespace, but works in math mode
-\newcommand\placeholder{%
+\newcommand{\placeholder}{%
   \makebox[0.7em]{%
     \kern.07em
     \vrule height.3ex
@@ -58,6 +61,52 @@ We use the notation $A[\,a \mapsto (b, c)\,]$ to denote a function identical to 
 A list element is created with an $\mathsf{insert}$ operation. Since each operation has a Lamport timestamp, a list element is uniquely identified by its timestamp, which remains immutable for the lifetime of the document. We call that Lamport timestamp the ID of the list element.
 
 The operation $\mathsf{insert}(\mathit{id}, \mathit{prev}, v)$ is an instruction to insert the value $v$ into a list at a position following the existing list element with ID $\mathit{prev}$. An insertion at the head of the list is expressed as $\mathsf{insert}(\mathit{id}, \mathsf{head}, v)$. The $\mathit{id}$ is the unique ID of this operation.
+
+\begin{figure*}
+\centering
+\AxiomC{$c = A_p(\mathsf{ctr})$}
+\AxiomC{$p = \mathrm{myPeerID()}$}
+\LeftLabel{\textsc{Gen-TS}}
+\BinaryInfC{$A_p,\; \mathsf{newID} \evalto A_p[\,\mathsf{ctr} \mapsto c+1\,],\; (c+1, p)$}
+\DisplayProof\hfill
+%
+\AxiomC{$\mathit{id} = (c, p_\mathit{id})$}
+\LeftLabel{\textsc{Apply-TS}}
+\UnaryInfC{$A_p,\; \mathsf{ts}(\mathit{id}) \evalto
+    A_p[\,\mathsf{ctr} \mapsto \mathrm{max}(A(\mathsf{ctr}), c)\,]$}
+\DisplayProof
+
+
+
+\begin{prooftree}
+    \AxiomC{$\mathit{id} \not\in \mathrm{dom}(A_p)$}
+    \AxiomC{$A_p(\mathit{prev}) = \mathsf{listEl}(v_\mathit{prev}, \mathit{next})$}
+    \AxiomC{$\mathit{next} < \mathit{id}$}
+    \AxiomC{$A_p,\; \mathsf{ts}(\mathit{id}) \evalto A_p'$}
+    \LeftLabel{$\textsc{Apply-Ins}_1$}
+    \QuaternaryInfC{$A_p,\; \mathsf{insert}(\mathit{id}, \mathit{prev}, v) \evalto
+        A_p'[\,\mathit{prev} \mapsto \mathsf{listEl}(v_\mathit{prev}, \mathit{id}),\;
+        \mathit{id} \mapsto \mathsf{listEl}(v, \mathit{next})\,]$}
+\end{prooftree}
+
+\begin{prooftree}
+    \AxiomC{$A_p(\mathit{prev}) = \mathsf{listEl}(v_\mathit{prev}, \mathit{next})$}
+    \AxiomC{$\mathit{id} < \mathit{next}$}
+    \AxiomC{$A_p,\; \mathsf{insert}(\mathit{id}, \mathit{next}, v) \evalto A_p'$}
+    \LeftLabel{$\textsc{Apply-Ins}_2$}
+    \TrinaryInfC{$A_p,\; \mathsf{insert}(\mathit{id}, \mathit{prev}, v) \evalto A_p'$}
+\end{prooftree}
+
+\begin{prooftree}
+    \AxiomC{$A_p(\mathit{target}) = \mathsf{listEl}(v, \mathit{next})$}
+    \AxiomC{$A_p,\; \mathsf{ts}(\mathit{id}) \evalto A_p'$}
+    \LeftLabel{\textsc{Apply-Del}}
+    \BinaryInfC{$A_p,\; \mathsf{delete}(\mathit{id}, \mathit{target}) \evalto
+        A_p'[\,\mathit{target} \mapsto \mathsf{listEl}(\bot, \mathit{next})\,]$}
+\end{prooftree}
+\caption{Rules for mutating an ordered list}
+\label{fig:rga-rules}
+\end{figure*}
 
 When the operation is applied to the list state $A$, it produces a modified list state $A'$ as follows:
 \begin{align*}
