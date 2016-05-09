@@ -1,6 +1,7 @@
 \documentclass[a4paper,twocolumn,10pt]{article}
 \usepackage[utf8]{inputenc}
 \usepackage{amsmath} % align environment
+\usepackage{amssymb} % mathbb
 \usepackage{mathptmx} % times roman, including math
 \usepackage{bussproofs} % notation for inference rules
 \usepackage[hyphens]{url}
@@ -44,6 +45,59 @@ CRDTs~\cite{Shapiro:2011wy,Roh:2011dw}
 % Look at KC's Quelea (also in DEBull March issue)
 
 \section{Operational Semantics}
+
+We go about defining the semantics for collaboratively editable data structures as follows. Firstly, we define a simple command language that is executed locally at any of the peers, and which allows the local state of that peer's copy of the document to be queried and modified. Performing read-only queries has no side-effects, but modifying the document has the effect of producing \emph{operations} describing the mutation. Those operations are applied to the local copy of the document, and also enqueued for broadcasting to other peers. 
+
+\begin{figure}
+\centering
+\begin{tabular}{rcll}
+CMD & ::= & \textsf{let} $x$ = EXPR & $x \in \mathrm{VAR}$ \\
+& $|$ & $\mathrm{EXPR} := v$ & $v \in \mathrm{VAL}$ \\
+& $|$ & $\mathrm{EXPR}.\mathsf{insert}(v)$ & $v \in \mathrm{VAL}$ \\
+& $|$ & $\mathrm{EXPR}.\mathsf{delete}$ \\
+& $|$ & $\mathrm{EXPR}.\mathsf{incr}(n)$ & $n \in \mathbb{N}$ \\
+& $|$ & \textsf{yield} \\
+& $|$ & CMD; CMD \vspace{0.5em}\\
+EXPR & ::= & \textsf{doc} \\
+& $|$ & $x$ & $x \in \mathrm{VAR}$ \\
+& $|$ & EXPR.\textsf{get}(\textit{key}) & $\mathit{key} \in \mathrm{String}$ \\
+& $|$ & EXPR.\textsf{next} \\
+& $|$ & EXPR.\textsf{values} \vspace{0.5em}\\
+VAR & ::= & ${x_1, x_2, \dots}$ \vspace{0.5em}\\
+VAL & ::= & $n$ & $n \in \mathbb{N}$ \\
+& $|$ & \verb|"str"| & $\mathtt{str} \in \mathrm{String}$ \\
+& $|$ & \verb|{}| \\
+& $|$ & \verb|[]|
+\end{tabular}
+\caption{Syntax of command language for querying and modifying a document}\label{fig:local-syntax}
+\end{figure}
+
+\begin{figure}
+\centering
+\begin{verbatim}
+doc := {};
+let list = doc.get("shopping").next;
+let eggs = list.insert("eggs");
+eggs.insert("milk");
+list.insert("cheese");
+
+// Final state:
+{"shopping": ["cheese", "eggs", "milk"]}
+\end{verbatim}
+\caption{Example of programmatically constructing a JSON document}\label{fig:make-doc}
+\end{figure}
+
+\subsection{Command language}
+
+The syntax of the command language is given in Figure~\ref{fig:local-syntax}. A program is assumed to be a linear, possibly infinite, sequence of commands. For brevity, the language of Figure~\ref{fig:local-syntax} does not provide the usual control structures such as conditionals, loops, or functions, but such facilities can easily be implemented by embedding this command language in a general-purpose programming language.
+
+We first explain the language informally, before giving its formal semantics. The expression construct EXPR is used to query the state of a document. An expression starts with either the special token \textsf{doc}, identifying the root of the JSON document tree, or a variable $x$ that was previously defined in a \textsf{let} command. The expression then continues with a sequence of method calls: $\mathsf{get}(\mathit{key})$ selects a key within a map (a JSON object), \textsf{next} moves to the next element of an ordered list, and \textsf{values} returns the value at the current position within the document.
+
+A command CMD either sets the value of a local variable (\textsf{let}), performs network communication (\textsf{yield}), or modifies the document. A document can be modified by assigning the value of some field (using the assignment operator :=), by inserting an element into a list (\textsf{insert}), by deleting an element from a list or a map (\textsf{delete}), or by incrementing a counter (\textsf{incr}). The preceding expression EXPR acts as a cursor, identifying the part of the document being modified.
+
+Figure~\ref{fig:make-doc} shows an example of a sequence of commands constructing a new document representing a shopping list. First \textsf{doc} is set to \verb|{}|, the empty map literal. The second line navigates to the key \verb|"shopping"| (which is implicitly created if it does not exist), and calls \textsf{next}, which treats the value at that key as a list and selects the head of the list. Finally, three items are inserted into the list. The \textsf{insert} command adds a new list element \emph{after} the current cursor position, and returns the cursor position of the newly inserted element. Thus, milk is inserted after eggs, but cheese is inserted at the head of the list, because the variable \verb|list| continues to refer to the head.
+
+\subsection{Lamport timestamps}
 
 We assume that each peer has a unique identifier (for example, the hash of its public key). Whenever an edit to a document is made at one of the peers, we generate a unique identifier for that edit operation using Lamport timestamps~\cite{Lamport:1978jq}.
 
