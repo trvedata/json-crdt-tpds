@@ -35,6 +35,14 @@
 
 CRDTs~\cite{Shapiro:2011wy,Roh:2011dw}
 
+% TODO papers on formal verification of CRDTs or similar:
+% Gotsman et al, "cause I'm strong enough", POPL 2016
+% various papers by Sebastian Burckhardt
+% Roh et al's tech report (lemmas 8-13, theorem 4)
+% Zeller & Bieniusa
+%
+% Look at KC's Quelea (also in DEBull March issue)
+
 \section{Operational Semantics}
 
 We assume that each peer has a unique identifier (for example, the hash of its public key). Whenever an edit to a document is made at one of the peers, we generate a unique identifier for that edit operation using Lamport timestamps~\cite{Lamport:1978jq}.
@@ -67,34 +75,34 @@ The operation $\mathsf{insert}(\mathit{id}, \mathit{prev}, v)$ is an instruction
 \AxiomC{$c = A_p(\mathsf{ctr})$}
 \AxiomC{$p = \mathrm{myPeerID()}$}
 \LeftLabel{\textsc{Gen-TS}}
-\BinaryInfC{$A_p,\; \mathsf{newID} \evalto A_p[\,\mathsf{ctr} \mapsto c+1\,],\; (c+1, p)$}
+\BinaryInfC{$A_p,\, \mathsf{newID} \evalto A_p[\,\mathsf{ctr} \mapsto c+1\,],\, (c+1, p)$}
 \DisplayProof\hfill
 %
 \AxiomC{$\mathit{id} = (c, p_\mathit{id})$}
 \LeftLabel{\textsc{Apply-TS}}
-\UnaryInfC{$A_p,\; \mathsf{ts}(\mathit{id}) \evalto
+\UnaryInfC{$A_p,\, \mathsf{ts}(\mathit{id}) \evalto
     A_p[\,\mathsf{ctr} \mapsto \mathrm{max}(A(\mathsf{ctr}), c)\,]$}
 \DisplayProof\proofSkipAmount
 
 \begin{prooftree}
 \AxiomC{}
 \LeftLabel{\textsc{Send}}
-\UnaryInfC{$A_p,\; \mathsf{yield} \evalto
+\UnaryInfC{$A_p,\, \mathsf{yield} \evalto
     A_p[\,\mathsf{send} \,\mapsto\, A_p(\mathsf{send}) \,\cup\, A_p(\mathsf{queue})\,]$}
 \end{prooftree}
 
 \begin{prooftree}
 \AxiomC{$q \in \mathit{peers}$}
 \LeftLabel{\textsc{Recv}}
-\UnaryInfC{$A_p,\; \mathsf{yield} \evalto
+\UnaryInfC{$A_p,\, \mathsf{yield} \evalto
     A_p[\,\mathsf{recv} \,\mapsto\, A_p(\mathsf{recv}) \,\cup\, A_q(\mathsf{send})\,]$}
 \end{prooftree}
 
 \begin{prooftree}
-\AxiomC{$A_p,\; \mathit{op} \evalto A_p'$}
+\AxiomC{$A_p,\, \mathit{op} \evalto A_p'$}
 \AxiomC{$\mathit{queue} = A_p'(\mathsf{queue}) \,\cup\, \{(A_p'(\mathsf{ops}), \mathit{op})\}$}
 \LeftLabel{\textsc{Apply-Local}}
-\BinaryInfC{$A_p,\; \mathsf{apply}(\mathit{op}) \evalto A_p'[\,
+\BinaryInfC{$A_p,\, \mathsf{apply}(\mathit{op}) \evalto A_p'[\,
     \mathsf{queue} \,\mapsto\, \mathit{queue},\;
     \mathsf{ops} \,\mapsto\, A_p''(\mathsf{ops}) \,\cup\, \{\mathit{op}\}\,]$}
 \end{prooftree}
@@ -102,9 +110,9 @@ The operation $\mathsf{insert}(\mathit{id}, \mathit{prev}, v)$ is an instruction
 \begin{prooftree}
 \AxiomC{$(\mathit{deps}, \mathit{op}) \in A_p(\mathsf{recv})$}
 \AxiomC{$\mathit{deps} \subseteq A_p(\mathsf{ops})$}
-\AxiomC{$A_p,\; \mathit{op} \evalto A_p'$}
+\AxiomC{$A_p,\, \mathit{op} \evalto A_p'$}
 \LeftLabel{\textsc{Apply-Remote}}
-\TrinaryInfC{$A_p,\; \mathsf{yield} \evalto
+\TrinaryInfC{$A_p,\, \mathsf{yield} \evalto
     A_p'[\,\mathsf{ops} \,\mapsto\, A_p'(\mathsf{ops}) \,\cup\, \{\mathit{op}\}\,]$}
 \end{prooftree}
 \caption{Rules for Lamport timestamps, sending, receiving, and applying operations}
@@ -113,33 +121,33 @@ The operation $\mathsf{insert}(\mathit{id}, \mathit{prev}, v)$ is an instruction
 
 \begin{figure*}
 \begin{prooftree}
-\AxiomC{$A_p,\;\mathsf{newID} \evalto A_p',\; \mathit{id}$}
-\AxiomC{$A_p',\; \mathsf{apply}(\mathsf{listOp}(\mathit{id})) \evalto A_p''$}
+\AxiomC{$A_p,\, \mathsf{newID} \evalto A_p',\, \mathit{id}$}
+\AxiomC{$A_p',\, \mathsf{apply}(\mathsf{listOp}(\mathit{id})) \evalto A_p''$}
 \LeftLabel{\textsc{Alloc-List}}
-\BinaryInfC{$A_p,\; \mathsf{listCmd} \evalto A_p'',\; \mathit{id}$}
+\BinaryInfC{$A_p,\, \mathsf{listCmd} \evalto A_p'',\, \mathit{id}$}
 \end{prooftree}
 
 \begin{prooftree}
 \AxiomC{$\mathit{prev} \in \mathrm{dom}(A_p)$}
-\AxiomC{$A_p,\; \mathsf{newID} \evalto A_p',\; \mathit{id}$}
-\AxiomC{$A_p',\; \mathsf{apply}(\mathsf{insertOp}(\mathit{id}, \mathit{prev}, v)) \evalto A_p''$}
+\AxiomC{$A_p,\, \mathsf{newID} \evalto A_p',\, \mathit{id}$}
+\AxiomC{$A_p',\, \mathsf{apply}(\mathsf{insertOp}(\mathit{id}, \mathit{prev}, v)) \evalto A_p''$}
 \LeftLabel{\textsc{Insert}}
-\TrinaryInfC{$A_p,\; \mathsf{insertCmd}(\mathit{prev}, v) \evalto A_p'',\; \mathit{id}$}
+\TrinaryInfC{$A_p,\, \mathsf{insertCmd}(\mathit{prev}, v) \evalto A_p'',\, \mathit{id}$}
 \end{prooftree}
 
 \begin{prooftree}
 \AxiomC{$\mathit{target} \in \mathrm{dom}(A_p)$}
-\AxiomC{$A_p,\; \mathsf{newID} \evalto A_p',\; \mathit{id}$}
-\AxiomC{$A_p',\; \mathsf{apply}(\mathsf{deleteOp}(\mathit{id}, \mathit{target})) \evalto A_p''$}
+\AxiomC{$A_p,\, \mathsf{newID} \evalto A_p',\, \mathit{id}$}
+\AxiomC{$A_p',\, \mathsf{apply}(\mathsf{deleteOp}(\mathit{id}, \mathit{target})) \evalto A_p''$}
 \LeftLabel{\textsc{Delete}}
-\TrinaryInfC{$A_p,\; \mathsf{deleteCmd}(\mathit{target}) \evalto A_p'',\; \bot$}
+\TrinaryInfC{$A_p,\, \mathsf{deleteCmd}(\mathit{target}) \evalto A_p'',\, \bot$}
 \end{prooftree}
 
 \begin{prooftree}
 \AxiomC{$\mathit{id} \not\in \mathrm{dom}(A_p)$}
-\AxiomC{$A_p,\; \mathsf{ts}(\mathit{id}) \evalto A_p'$}
+\AxiomC{$A_p,\, \mathsf{ts}(\mathit{id}) \evalto A_p'$}
 \LeftLabel{\textsc{Apply-List}}
-\BinaryInfC{$A_p,\; \mathsf{listOp}(\mathit{id}) \evalto
+\BinaryInfC{$A_p,\, \mathsf{listOp}(\mathit{id}) \evalto
     A_p'[\,\mathit{id} \,\mapsto\, \mathsf{listEl}(\bot, \mathsf{tail})\,]$}
 \end{prooftree}
 
@@ -147,9 +155,9 @@ The operation $\mathsf{insert}(\mathit{id}, \mathit{prev}, v)$ is an instruction
 \AxiomC{$\mathit{id} \not\in \mathrm{dom}(A_p)$}
 \AxiomC{$A_p(\mathit{prev}) = \mathsf{listEl}(v_\mathit{prev}, \mathit{next})$}
 \AxiomC{$\mathit{next} < \mathit{id} \,\vee\, \mathit{next} = \mathsf{tail}$}
-\AxiomC{$A_p,\; \mathsf{ts}(\mathit{id}) \evalto A_p'$}
+\AxiomC{$A_p,\, \mathsf{ts}(\mathit{id}) \evalto A_p'$}
 \LeftLabel{$\textsc{Apply-Ins}_1$}
-\QuaternaryInfC{$A_p,\; \mathsf{insertOp}(\mathit{id}, \mathit{prev}, v) \evalto
+\QuaternaryInfC{$A_p,\, \mathsf{insertOp}(\mathit{id}, \mathit{prev}, v) \evalto
     A_p'[\,\mathit{prev} \,\mapsto\, \mathsf{listEl}(v_\mathit{prev}, \mathit{id}),\;
     \mathit{id} \,\mapsto\, \mathsf{listEl}(v, \mathit{next})\,]$}
 \end{prooftree}
@@ -157,16 +165,16 @@ The operation $\mathsf{insert}(\mathit{id}, \mathit{prev}, v)$ is an instruction
 \begin{prooftree}
 \AxiomC{$A_p(\mathit{prev}) = \mathsf{listEl}(v_\mathit{prev}, \mathit{next})$}
 \AxiomC{$\mathit{id} < \mathit{next}$}
-\AxiomC{$A_p,\; \mathsf{insertOp}(\mathit{id}, \mathit{next}, v) \evalto A_p'$}
+\AxiomC{$A_p,\, \mathsf{insertOp}(\mathit{id}, \mathit{next}, v) \evalto A_p'$}
 \LeftLabel{$\textsc{Apply-Ins}_2$}
-\TrinaryInfC{$A_p,\; \mathsf{insertOp}(\mathit{id}, \mathit{prev}, v) \evalto A_p'$}
+\TrinaryInfC{$A_p,\, \mathsf{insertOp}(\mathit{id}, \mathit{prev}, v) \evalto A_p'$}
 \end{prooftree}
 
 \begin{prooftree}
 \AxiomC{$A_p(\mathit{target}) = \mathsf{listEl}(v, \mathit{next})$}
-\AxiomC{$A_p,\; \mathsf{ts}(\mathit{id}) \evalto A_p'$}
+\AxiomC{$A_p,\, \mathsf{ts}(\mathit{id}) \evalto A_p'$}
 \LeftLabel{\textsc{Apply-Del}}
-\BinaryInfC{$A_p,\; \mathsf{deleteOp}(\mathit{id}, \mathit{target}) \evalto
+\BinaryInfC{$A_p,\, \mathsf{deleteOp}(\mathit{id}, \mathit{target}) \evalto
     A_p'[\,\mathit{target} \,\mapsto\, \mathsf{listEl}(\bot, \mathit{next})\,]$}
 \end{prooftree}
 \caption{Rules for mutating an ordered list}
