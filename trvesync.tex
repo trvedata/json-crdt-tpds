@@ -26,7 +26,7 @@
 
 \begin{document}
 \sloppy
-\title{Composing Data Structures for Collaborative Document Editing}
+\title{A Conflict-Free Replicated JSON Datatype}
 \author{}
 \maketitle
 
@@ -46,7 +46,20 @@ CRDTs~\cite{Shapiro:2011wy,Roh:2011dw}
 
 \section{Operational Semantics}
 
-We go about defining the semantics for collaboratively editable data structures as follows. Firstly, we define a simple command language that is executed locally at any of the peers, and which allows the local state of that peer's copy of the document to be queried and modified. Performing read-only queries has no side-effects, but modifying the document has the effect of producing \emph{operations} describing the mutation. Those operations are applied to the local copy of the document, and also enqueued for broadcasting to other peers. 
+We go about defining the semantics for collaboratively editable data structures as follows. Firstly, we define a simple command language that is executed locally at any of the peers, and which allows the local state of that peer's copy of the document to be queried and modified. Performing read-only queries has no side-effects, but modifying the document has the effect of producing \emph{operations} describing the mutation. Those operations are applied to the local copy of the document, and also enqueued for broadcasting to other peers.
+
+\subsection{Data model}
+
+Our data model for a document is based on JSON. It consists of a tree with the following types of node:
+
+\begin{description}
+\item[Map:] A branch node whose children are not ordered, and where each child is labelled with a string \emph{key}. A key uniquely identifies one of the children. Keys are immutable, but values are mutable, and key-value mappings can be added and removed from the map. A JSON map is also known as an \emph{object}.
+\item[List:] A branch node whose children have an order defined by the application. The list can be mutated by inserting or deleting list elements. A JSON list is also known as an \emph{array}.
+\item[Register:] A leaf node containing a primitive value (string, number, boolean or null). Although primitives are themselves immutable, a register can be mutated by assigning a new value to it.
+\item[Counter:] A leaf node containing a number. It is similar to a register, but has different semantics under concurrent modification, as described below.
+\end{description}
+
+Thus, in the tree of a JSON document, all the interior branch nodes are either maps or lists, and all the leaf nodes are either registers or counters. Maps and lists may be nested within each other arbitrarily. For simplicity we do not define a schema language or static type-checking rules, but such restrictions of the document structure could be added easily.
 
 \begin{figure}
 \centering
@@ -84,40 +97,49 @@ list.insert("cheese");
 
 // Final state:
 {"shopping": ["cheese", "eggs", "milk"]}
+
+eggs.values // evaluates to {"eggs"}
+eggs.next.values // evaluates to {"milk"}
 \end{verbatim}
 \caption{Example of programmatically constructing a JSON document}\label{fig:make-doc}
 \end{figure}
 
 \subsection{Command language}
 
-The syntax of the command language is given in Figure~\ref{fig:local-syntax}. A program is assumed to be a linear, possibly infinite, sequence of commands. For brevity, the language of Figure~\ref{fig:local-syntax} does not provide the usual control structures such as conditionals, loops, or functions, but such facilities can easily be implemented by embedding this command language in a general-purpose programming language.
+The syntax of the command language is given in Figure~\ref{fig:local-syntax}. It is not a full programming language, but rather an API through which the document state is queried and modified. We assume that the program accepts user input and issues a (possibly infinite) sequence of commands to the API. We model only the semantics of those commands, and do not assume anything about the program in which the command language is embedded.
 
-We first explain the language informally, before giving its formal semantics. The expression construct EXPR is used to query the state of a document. An expression starts with either the special token \textsf{doc}, identifying the root of the JSON document tree, or a variable $x$ that was previously defined in a \textsf{let} command. The expression then continues with a sequence of method calls: $\mathsf{get}(\mathit{key})$ selects a key within a map (a JSON object), \textsf{iter} starts iterating over an ordered list, \textsf{next} moves to the next element of an ordered list, and \textsf{values} returns the value at the current position within the document.
+We first explain the language informally, before giving its formal semantics. The expression construct EXPR is used to query the state of a document. An expression starts with either the special token \textsf{doc}, identifying the root of the JSON document tree, or a variable $x$ that was previously defined in a \textsf{let} command. The expression then continues with a sequence of method calls: $\mathsf{get}(\mathit{key})$ selects a key within a map, \textsf{iter} starts iterating over an ordered list, \textsf{next} moves to the next element of an ordered list, and \textsf{values} returns the value of the register or counter at the current position within the document. (\textsf{values} is not defined for map or list nodes.)
 
-A command CMD either sets the value of a local variable (\textsf{let}), performs network communication (\textsf{yield}), or modifies the document. A document can be modified by assigning the value of some field (using the assignment operator :=), by inserting an element into a list (\textsf{insert}), by deleting an element from a list or a map (\textsf{delete}), or by incrementing a counter (\textsf{incr}). The preceding expression EXPR acts as a cursor, identifying the part of the document being modified.
+A command CMD either sets the value of a local variable (\textsf{let}), performs network communication (\textsf{yield}), or modifies the document. A document can be modified by assigning the value of a register (using the assignment operator :=), by inserting an element into a list (\textsf{insert}), by deleting an element from a list or a map (\textsf{delete}), or by incrementing a counter (\textsf{incr}). The preceding expression EXPR acts as a cursor, identifying the part of the document being modified.
 
-Figure~\ref{fig:make-doc} shows an example of a sequence of commands constructing a new document representing a shopping list. First \textsf{doc} is set to \verb|{}|, the empty map literal. The second line navigates to the key \verb|"shopping"| (which is implicitly created if it does not exist), and calls \textsf{iter}, which treats the value at that key as a list and selects the head of the list. Finally, three items are inserted into the list. The \textsf{insert} command adds a new list element \emph{after} the current cursor position, and returns the cursor position of the newly inserted element. Thus, milk is inserted after eggs, but cheese is inserted at the head of the list, because the variable \verb|list| continues to refer to the head.
+Figure~\ref{fig:make-doc} shows an example of a sequence of commands constructing a new document representing a shopping list. First \textsf{doc} is set to \verb|{}|, the empty map literal. The second line navigates to the key \verb|"shopping"| and calls \textsf{iter}, which treats the value at that key as a list and selects the head of the list. If the key does not exist, it is implicitly created and set to the empty list. Finally, three items are inserted into the list. The \textsf{insert} command adds a new list element \emph{after} the current cursor position, and returns the cursor position of the newly inserted element. Thus, milk is inserted after eggs, but cheese is inserted at the head of the list, because the variable \verb|list| continues to refer to the head.
 
-A few features of this language deliberately differ from most mainstream programming languages: keys in maps are implicitly created when they are first accessed; lists can only be navigated by iteration (\textsf{next}) but not by index; and the language has literals for creating empty maps and lists, but not for non-empty collections. As we shall see later, these features are helpful for achieving desirable semantics in the presence of concurrent modifications.
+A few features of this language deliberately differ from most mainstream programming languages: keys in maps are implicitly created when they are first accessed, so there is no need for a command to insert a new key into a map; lists can only be navigated by iteration (\textsf{next}) but not by index; and the language has literals for creating empty maps and lists, but not for non-empty collections. As we shall see later, these features are helpful for achieving desirable semantics in the presence of concurrent modifications.
 
 \subsubsection{Semantics of expression evaluation}
 
+\newcommand{\multialign}[2]{%
+  \multispan{#1}\mbox{$\displaystyle{}#2$}%
+}
 \begin{figure}
-\centering \begin{alignat*}{2}
-A_p =\; && \{\; \mathsf{mapT}(\mathsf{doc}) & \mapsto \{\; \mathsf{listT}(\text{``shopping''}) \mapsto \{ \\
-&& \mathsf{next}(\mathsf{head}) & \mapsto \mathit{id}_3, \\
-&& \mathsf{regT}(\mathit{id}_3) & \mapsto
-    \{\,\mathsf{op}(\mathsf{id}: \mathit{id}_3,\, \mathsf{val}: \text{``cheese''})\,\}, \\
-&& \mathsf{next}(\mathit{id}_3) & \mapsto \mathit{id_1}, \\
-&& \mathsf{regT}(\mathit{id}_1) & \mapsto
-    \{\,\mathsf{op}(\mathsf{id}: \mathit{id}_1,\, \mathsf{val}: \text{``eggs''})\,\}, \\
-&& \mathsf{next}(\mathit{id}_1) & \mapsto \mathit{id_2}, \\
-&& \mathsf{regT}(\mathit{id}_2) & \mapsto
-    \{\,\mathsf{op}(\mathsf{id}: \mathit{id}_2,\, \mathsf{val}: \text{``milk''})\,\}, \\
-&& \mathsf{next}(\mathit{id}_2) & \mapsto \mathsf{tail} \\
-\}\;\}\;\}
+\centering \begin{alignat*}{3}
+& \multialign{5}{A_p = \{\; \mathsf{mapT}(\mathsf{doc}) \mapsto \{\;
+    \mathsf{listT}(\text{``shopping''}) \mapsto \{ } \\
+&&&& \mathsf{next}(\mathsf{head}) & \mapsto \mathit{id}_3, \\
+&&&& \mathsf{regT}(\mathit{id}_3) & \mapsto \{\,\mathit{id}_3 \mapsto \text{``cheese''})\,\}, \\
+&&&& \mathsf{next}(\mathit{id}_3) & \mapsto \mathit{id_1}, \\
+&&&& \mathsf{regT}(\mathit{id}_1) & \mapsto \{\,\mathit{id}_1 \mapsto \text{``eggs''})\,\}, \\
+&&&& \mathsf{next}(\mathit{id}_1) & \mapsto \mathit{id_2}, \\
+&&&& \mathsf{regT}(\mathit{id}_2) & \mapsto \{\,\mathit{id}_2 \mapsto \text{``milk''})\,\}, \\
+&&&& \mathsf{next}(\mathit{id}_2) & \mapsto \mathsf{tail} \\
+&&& \}\;\}, \\
+&& \mathsf{list} & \multialign{3}{\mapsto \mathsf{cursor}(\langle \mathsf{mapT}(\mathsf{doc}),%
+    \mathsf{listT}(\text{``shopping''})\rangle,\, \mathsf{head}),} \\
+&& \mathsf{eggs} & \multialign{3}{\mapsto \mathsf{cursor}(\langle \mathsf{mapT}(\mathsf{doc}),%
+    \mathsf{listT}(\text{``shopping''})\rangle,\, \mathit{id}_1)} \\
+& \}
 \end{alignat*}
-\caption{Internal representation of the example document from Figure~\ref{fig:make-doc}.}\label{fig:state-example}
+\caption{Internal state $A_p$ of peer $p$ after the execution of the commands in Figure~\ref{fig:make-doc}.}\label{fig:state-example}
 \end{figure}
 
 \begin{figure*}
@@ -194,7 +216,7 @@ A_p =\; && \{\; \mathsf{mapT}(\mathsf{doc}) & \mapsto \{\; \mathsf{listT}(\text{
 
 \begin{prooftree}
 \AxiomC{$\mathsf{regT}(k) \in \mathrm{dom}(\mathit{ctx})$}
-\AxiomC{$\mathit{val} = \{\, \mathit{op}.\mathsf{val} \mid \mathit{op} \in \mathit{ctx}(\mathsf{regT}(k)) \,\}$}
+\AxiomC{$\mathit{val} = \mathrm{range}(\mathit{ctx}(\mathsf{regT}(k)))$}
 \LeftLabel{$\textsc{Val}_2$}
 \BinaryInfC{$\mathit{ctx},\, \mathsf{cursor}(\langle\rangle,\, k).\mathsf{values} \evalto \mathit{val}$}
 \end{prooftree}
@@ -212,23 +234,23 @@ A_p =\; && \{\; \mathsf{mapT}(\mathsf{doc}) & \mapsto \{\; \mathsf{listT}(\text{
 
 The state of peer $p$ is described by $A_p$, a finite partial function. The semantics of the command language are defined by rules that inspect and modify this local state $A_p$, and which are independent of the state $A_{p'}$ of any other peer $p'$. The only communication between peers occurs in the evaluation of the \textsf{yield} command, which we discuss later. For now, we concentrate on the execution of commands at a single peer $p$.
 
-An illustrative example of the peer state $A_p$ is given in Figure~\ref{fig:state-example}, which corresponds to the shopping list example of Figure~\ref{fig:make-doc}. In Figure~\ref{fig:state-example}, $A_p$ is a partial function whose domain is the single atom \textsf{mapT(doc)}, which denotes that the document \textsf{doc} is of type map. \textsf{mapT(doc)} maps to another partial function containing the key-value pairs of the map; here, the only entry is the key ``shopping'' of type \textsf{listT}. The list is represented in a manner resembling a linked list, with each list element assigned a unique identifier ($\mathit{id}_1, \mathit{id}_2, \mathit{id}_3$), and special \textsf{head} and \textsf{tail} atoms denoting the beginning and end of the list, respectively.
+An illustrative example of the peer state $A_p$ is given in Figure~\ref{fig:state-example}, which corresponds to the shopping list example of Figure~\ref{fig:make-doc}. For each local variable defined with a \textsf{let} command, $A_p$ maps the variable name to a \emph{cursor}, which identifies a position in the document as described below. In addition, $A_p$ maps the single atom \textsf{mapT(doc)} to a nested partial function representing the contents of the document. \textsf{mapT} denotes that the document \textsf{doc} is of type map. The only map entry is the key ``shopping'' of type \textsf{listT}. The list is represented in a manner resembling a linked list, with each list element assigned a unique identifier ($\mathit{id}_1, \mathit{id}_2, \mathit{id}_3$), and special \textsf{head} and \textsf{tail} atoms denoting the beginning and end of the list, respectively.
 
-Figure~\ref{fig:expr-rules} gives the rules for evaluating EXPR expressions in the command language, which are evaluated in the context of the local peer state $A_p$. The \textsc{Exec} rule defines that commands are executed sequentially. The \textsc{Let} rule allows the program to define a local variable, which is added to the local state, and the corresponding \textsc{Var} rule allows the program to retrieve the value of a previously defined variable.
+Figure~\ref{fig:expr-rules} gives the rules for evaluating EXPR expressions in the command language, which are evaluated in the context of the local peer state $A_p$. The \textsc{Exec} rule formalizes the assumption that commands are executed sequentially. The \textsc{Let} rule allows the program to define a local variable, which is added to the local state, and the corresponding \textsc{Var} rule allows the program to retrieve the value of a previously defined variable.
 
 The rules in Figure~\ref{fig:expr-rules} show how an expression is evaluated to a \emph{cursor} atom. A cursor unambiguously identifies a particular position in a JSON document by describing a path from the root of the document tree to some branch or leaf node. A cursor consists only of immutable keys and identifiers, so it can be sent over the network to another peer, where it can be used to locate the same position in the document.
 
 For example,
-$$\mathsf{cursor}(\langle \mathsf{mapT}(\mathsf{doc}), \mathsf{listT}(\text{``shopping''}) \rangle,\, \mathit{id}_1)$$
+\[ \mathsf{cursor}(\langle \mathsf{mapT}(\mathsf{doc}), \mathsf{listT}(\text{``shopping''}) \rangle,\, \mathit{id}_1) \]
 is a cursor representing the list element \verb|"eggs"| in Figure~\ref{fig:make-doc}. It can be interpreted as a path through the structure in Figure~\ref{fig:state-example}, read from left to right: starting from the \textsf{doc} map at the root, it traverses through the map entry ``shopping'' of type \textsf{listT}, and finishes with the list element with identifier $\mathit{id}_1$.
 
-In general, $\mathsf{cursor}(\langle k_1, \dots, k_{n-1} \rangle,\, k_n)$ consists of a (possibly empty) vector of keys $\langle k_1, \dots, k_{n-1} \rangle$, and a final key $k_n$ (which is always present). $k_n$ can be thought of as the final element of the vector, with the distinction that it is not tagged with a datatype, whereas the elements of the vector have a datatype atom such as \textsf{mapT} or \textsf{listT}.
+In general, $\mathsf{cursor}(\langle k_1, \dots, k_{n-1} \rangle,\, k_n)$ consists of a (possibly empty) vector of keys $\langle k_1, \dots, k_{n-1} \rangle$, and a final key $k_n$ (which is always present). $k_n$ can be thought of as the final element of the vector, with the distinction that it is not tagged with a datatype, whereas the elements of the vector are tagged with the datatype of the branch node, either \textsf{mapT} or \textsf{listT}.
 
 The \textsc{Doc} rule in Figure~\ref{fig:expr-rules} defines the simplest cursor $\mathsf{cursor}(\langle\rangle,\, \mathsf{doc})$, referencing the root of the document using the special atom \textsf{doc}. The \textsc{Get} rule navigates a cursor to a particular key within a map. For example, the expression \verb|doc.get("shopping")| evaluates to $\mathsf{cursor}(\langle \mathsf{mapT}(\mathsf{doc}) \rangle,\, \text{``shopping''})$ by applying the \textsc{Doc} and \textsc{Get} rules. Note that the expression \verb|doc.get| implicitly asserts that \textsf{doc} is of type \textsf{mapT}, and this assertion is encoded in the cursor.
 
 The \textsc{Iter} rule shifts the cursor into a list and positions it at the \textsf{head} of the list. This rule applies even if the list is empty or nonexistent in $A_p$. The three rules $\textsc{Next}_{1,2,3}$ handle iteration through a linked list by setting the final key in the cursor to the identifier of the next list element. The \textsc{Next} rules apply only if the list exists in $A_p$, and the $\textsc{Next}_3$ recursively descends the local state according to the vector of keys in the cursor.
 
-Finally, the $\textsc{Val}_{1,2,3}$ rules allow a program to read the contents of the document at a particular cursor position, using a similar recursive rule structure as the \textsc{Next} rules. The leaves of the document tree are always \emph{registers}, expressed using the \textsf{regT} type annotation in the local state. Although a peer can only assign a single value to a register, a register can nevertheless contain multiple values if multiple peers concurrently assign values to it, an issue we will explore in greater depth later.
+Finally, the $\textsc{Val}_{1,2,3}$ rules allow a program to read the contents of a register at a particular cursor position, using a similar recursive rule structure as the \textsc{Next} rules. A register is expressed using the \textsf{regT} type annotation in the local state, and the \textsc{Val} rules only apply if the register identified by the cursor exists in $A_p$. Although a peer can only assign a single value to a register, a register can nevertheless contain multiple values if multiple peers concurrently assign values to it -- an issue we will explore in greater depth later.
 
 \subsubsection{Semantics of local mutations}
 
