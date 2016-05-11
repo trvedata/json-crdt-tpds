@@ -11,6 +11,9 @@
 \hyphenation{da-ta-cen-ter da-ta-cen-ters time-stamp}
 \frenchspacing
 
+\newif\ifproofdraft
+\proofdraftfalse
+
 \newcommand{\evalto}{\;\Longrightarrow\;}
 
 % Placeholder character like \textvisiblespace, but works in math mode
@@ -22,6 +25,10 @@
     \vrule height.3ex
     \kern.07em
   }%
+}
+
+\newcommand{\multialign}[2]{%
+  \multispan{#1}\mbox{$\displaystyle{}#2$}%
 }
 
 \begin{document}
@@ -118,9 +125,6 @@ A few features of this language deliberately differ from most mainstream program
 
 \subsubsection{Semantics of expression evaluation}
 
-\newcommand{\multialign}[2]{%
-  \multispan{#1}\mbox{$\displaystyle{}#2$}%
-}
 \begin{figure}
 \centering \begin{alignat*}{3}
 & \multialign{5}{A_p = \{\; \mathsf{mapT}(\mathsf{doc}) \mapsto \{\;
@@ -252,34 +256,23 @@ The \textsc{Iter} rule shifts the cursor into a list and positions it at the \te
 
 Finally, the $\textsc{Val}_{1,2,3}$ rules allow a program to read the contents of a register at a particular cursor position, using a similar recursive rule structure as the \textsc{Next} rules. A register is expressed using the \textsf{regT} type annotation in the local state, and the \textsc{Val} rules only apply if the register identified by the cursor exists in $A_p$. Although a peer can only assign a single value to a register, a register can nevertheless contain multiple values if multiple peers concurrently assign values to it -- an issue we will explore in greater depth later.
 
-\subsubsection{Semantics of local mutations}
+\subsection{Generating operations}
 
-\subsection{Lamport timestamps}
+When commands mutate the state of the document, they generate \emph{operations} that describe the mutation. In our semantics, a command never directly modifies the local peer state $A_p$, but only generates an operation. That operation is then immediately applied to $A_p$ so that it takes effect locally, and the operation is also asynchronously broadcast to the other peers. A peer applies operations received from remote peers when its causal dependencies are satisfied, as detailed below.
 
-We assume that each peer has a unique identifier (for example, the hash of its public key). Whenever an edit to a document is made at one of the peers, we generate a unique identifier for that edit operation using Lamport timestamps~\cite{Lamport:1978jq}.
+\subsubsection{Lamport timestamps}
 
-A Lamport timestamp is a pair $(c, p)$ where $p$ is the unique identifier of the peer on which the edit is made. $c$ is a counter that is stored at each peer and incremented for every operation. Whenever an operation is sent to other peers, the Lamport timestamp $(c, p)$ for that operation is included in the message.
+Every operation in our model is given a unique identifier, which is used in the local state and in cursors. For example, in Figure~\ref{fig:state-example}, $\mathit{id}_{1,2,3}$ are used to identify list elements and also the values of registers. Those identifiers $\mathit{id}_{1,2,3}$ are in fact the identifiers of the operations that inserted the list elements.
+
+In order to generate globally unique operation identifiers without requiring synchronous coordination between peers we use Lamport timestamps~\cite{Lamport:1978jq}. A Lamport timestamp is a pair $(c, p)$ where $p$ is the unique identifier of the peer on which the edit is made (for example, a cryptographic hash of its public key), and $c$ is a counter that is stored at each peer and incremented for every operation. Since each peer generates a strictly monotonically increasing sequence of counter values $c$, the pair $(c, p)$ is unique.
 
 If a peer receives an operation with a counter value $c$ that is greater than the locally stored counter value, the local counter is increased to the value of the incoming counter. This ensures that if operation $o_1$ happened before $o_2$ (that is, the peer that generated $o_2$ had received and processed $o_1$ before $o_2$ was generated), then $o_2$ must have a greater counter value than $o_1$. Only concurrent operations can have equal counter values.
 
 We can thus define a total ordering $<$ for Lamport timestamps:
-$$(c_1, p_1) < (c_2, p_2) \;\text{ iff }\; (c_1 < c_2) \vee (c_1 = c_2 \wedge p_1 < p_2).$$
-If one operation happened before another, this ordering is consistent with causality (the earlier operation has a lower timesetamp). If two operations are concurrent, their order according to $<$ is arbitrary but deterministic.
+\[ (c_1, p_1) < (c_2, p_2) \;\text{ iff }\; (c_1 < c_2) \vee (c_1 = c_2 \wedge p_1 < p_2). \]
+If one operation happened before another, this ordering is consistent with causality (the earlier operation has a lower timesetamp). If two operations are concurrent, their order according to $<$ is arbitrary but deterministic. This ordering property is important for our definition of the semantics of ordered lists.
 
-\subsection{Ordered List Operations}
 
-The \emph{Replicated Growable Array} (RGA) datatype was originally defined by Roh et al.\ using pseudocode~\cite{Roh:2011dw}. In this section we present the algorithm in an alternative form which is more amenable to correctness proofs.
-
-Each peer that maintains a replica of an RGA stores a copy of its state $A$, which is a partial function from $\mathit{id}$ to pairs of $(\mathit{value}, \mathit{next})$. The parameter $\mathit{id}$ is either a Lamport timestamp or the special symbol $\mathsf{head}$, indicating the head of the list. $\mathit{next}$ is either a Lamport timestamp or the symbol $\mathsf{tail}$, denoting the end of the list. $\mathit{value}$ is any value of the datatype of list elements, or the special value $\bot$, indicating the absence of a value.
-
-The empty list $A_\emptyset$ is represented as a function whose domain is the single value $\mathsf{head}$:
-$$ A_\emptyset = \{\mathsf{head} \mapsto (\bot, \mathsf{tail})\}. $$
-
-We use the notation $A[\,a \mapsto (b, c)\,]$ to denote a function identical to $A$, except that $A(a)=(b,c)$.
-
-A list element is created with an $\mathsf{insert}$ operation. Since each operation has a Lamport timestamp, a list element is uniquely identified by its timestamp, which remains immutable for the lifetime of the document. We call that Lamport timestamp the ID of the list element.
-
-The operation $\mathsf{insert}(\mathit{id}, \mathit{prev}, v)$ is an instruction to insert the value $v$ into a list at a position following the existing list element with ID $\mathit{prev}$. An insertion at the head of the list is expressed as $\mathsf{insert}(\mathit{id}, \mathsf{head}, v)$. The $\mathit{id}$ is the unique ID of this operation.
 
 \begin{figure*}
 \centering
@@ -392,6 +385,10 @@ The operation $\mathsf{insert}(\mathit{id}, \mathit{prev}, v)$ is an instruction
 \label{fig:rga-rules}
 \end{figure*}
 
+
+
+\ifproofdraft
+
 When the operation is applied to the list state $A$, it produces a modified list state $A'$ as follows:
 \begin{align*}
 A' &= \mathrm{apply}(A, \mathsf{insert}(\mathit{id}, \mathit{prev}, v)) \\ &=
@@ -486,6 +483,8 @@ Any operation $o_i$ in $H_c$ that uses a different list element (not $\mathit{pr
 If the reference element appears before $o_{n+1}$ in the final order, that means the timestamp of the reference element is greater than $\mathit{id}$, and so the timestamp of $o_i$ is also greater than $\mathit{id}$. If $o_{n+1}$ appears after $o_i$ in the history, then the apply rule for $o_{n+1}$ skips over both $o_i$ and the reference element. If $o_i$ appears after $o_{n+1}$ in the history, the apply rule for $o_i$ does not skip over the list element for $o_{n+1}$, again because the timestamp for $o_i$ is greater than $\mathit{id}$. Either way, if the reference element appears before $o_{n+1}$ in the final order, so does $o_i$, regardless of the order in which operations are applied.
 
 TODO that last bit of the argument is a bit hand-wavy, need to make it more precise. But I think the general approach is ok. That completes the induction step, and thus the proof.
+
+\fi % proofdraft
 
 {\footnotesize
 \bibliographystyle{plainnat}
