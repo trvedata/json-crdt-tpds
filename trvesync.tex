@@ -98,7 +98,8 @@ VAL & ::= & $n$ & $n \in \mathbb{N}$ \\
 \begin{verbatim}
 doc := {};
 let list = doc.get("shopping").iter;
-let eggs = list.insert("eggs");
+list.insert("eggs");
+let eggs = list.next;
 eggs.insert("milk");
 list.insert("cheese");
 
@@ -119,7 +120,7 @@ We first explain the language informally, before giving its formal semantics. Th
 
 A command CMD either sets the value of a local variable (\textsf{let}), performs network communication (\textsf{yield}), or modifies the document. A document can be modified by assigning the value of a register (using the assignment operator :=), by inserting an element into a list (\textsf{insert}), by deleting an element from a list or a map (\textsf{delete}), or by incrementing a counter (\textsf{incr}). The preceding expression EXPR acts as a cursor, identifying the part of the document being modified.
 
-Figure~\ref{fig:make-doc} shows an example of a sequence of commands constructing a new document representing a shopping list. First \textsf{doc} is set to \verb|{}|, the empty map literal. The second line navigates to the key \verb|"shopping"| and calls \textsf{iter}, which treats the value at that key as a list and selects the head of the list. If the key does not exist, it is implicitly created and set to the empty list. Finally, three items are inserted into the list. The \textsf{insert} command adds a new list element \emph{after} the current cursor position, and returns the cursor position of the newly inserted element. Thus, milk is inserted after eggs, but cheese is inserted at the head of the list, because the variable \verb|list| continues to refer to the head.
+Figure~\ref{fig:make-doc} shows an example sequence of commands that constructs a new document representing a shopping list. First \textsf{doc} is set to \verb|{}|, the empty map literal. The second line navigates to the key \verb|"shopping"| and calls \textsf{iter}, which treats the value at that key as a list and selects the head of the list. If the key does not exist, it is implicitly created and set to the empty list. Finally, three items are inserted into the list. The \textsf{insert} command adds a new list element \emph{after} the current cursor position, or at the head if the cursor is at the head of the list. The variable \verb|list| refers to the head, so cheese is inserted before eggs, but the variable \verb|eggs| refers to the list element ``eggs'', so milk is inserted after eggs.
 
 A few features of this language deliberately differ from most mainstream programming languages: keys in maps are implicitly created when they are first accessed, so there is no need for a command to insert a new key into a map; lists can only be navigated by iteration (\textsf{next}) but not by index; and the language has literals for creating empty maps and lists, but not for non-empty collections. As we shall see later, these features are helpful for achieving desirable semantics in the presence of concurrent modifications.
 
