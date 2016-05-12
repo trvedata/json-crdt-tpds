@@ -271,21 +271,76 @@ We can thus define a total ordering $<$ for Lamport timestamps:
 \[ (c_1, p_1) < (c_2, p_2) \;\text{ iff }\; (c_1 < c_2) \vee (c_1 = c_2 \wedge p_1 < p_2). \]
 If one operation happened before another, this ordering is consistent with causality (the earlier operation has a lower timesetamp). If two operations are concurrent, their order according to $<$ is arbitrary but deterministic. This ordering property is important for our definition of the semantics of ordered lists.
 
+\subsubsection{Operation structure}
 
+An operation is a tuple of the form
+\begin{alignat*}{2}
+& \mathsf{op}( \\
+&& \mathit{id} &: \mathbb{N} \times \mathrm{PeerID}, \\
+&& \mathit{deps} &: \mathcal{P}(\mathbb{N} \times \mathrm{PeerID}), \\
+&& \mathit{cur} &: \mathsf{cursor}(\langle k_1, \dots, k_{n-1} \rangle,\, k_n), \\
+&& \mathit{mut} &: \mathsf{insert}(v) \mid \mathsf{delete} \mid \mathsf{assign}(v) \\
+& )
+\end{alignat*}
+where $\mathit{id}$ is the Lamport timestamp that uniquely identifies the operation, $\mathit{cur}$ is the cursor describing the position in the document being modified, and $\mathit{mut}$ is the mutation that was requested at the specified position.
+
+$\mathit{deps}$ is the set of causal dependencies of the operation, given as a set of Lamport timestamps. The semantics below defines $\mathit{deps}$ to be the set of all operation IDs that had been applied to the document at the time when the operation was generated. In a real implementation, this set would become impracticably large, so a compact representation of causal history would be used instead -- for example, version vectors or dotted version vectors (TODO citations). However, to avoid ambiguity in our semantics we give the dependencies as a simple set of operation IDs.
+
+The purpose of the causal dependencies $\mathit{deps}$ is to impose a partial ordering on operations: an operation can only be applied after all operations that ``happened before'' it have been applied. In particular, this means that the sequence of operations generated at one particular peer will be applied in the same order at every other peer. Operations that are concurrent, i.e. where there is no causal dependency, can be applied in any order.
+
+\subsubsection{Semantics of generating operations}
 
 \begin{figure*}
 \centering
-\AxiomC{$c = A_p(\mathsf{ctr})$}
-\AxiomC{$p = \mathrm{myPeerID()}$}
-\LeftLabel{\textsc{Gen-TS}}
-\BinaryInfC{$A_p,\, \mathsf{newID} \evalto A_p[\,\mathsf{ctr} \mapsto c+1\,],\, (c+1, p)$}
-\DisplayProof\hfill
-%
-\AxiomC{$\mathit{id} = (c, p_\mathit{id})$}
-\LeftLabel{\textsc{Apply-TS}}
-\UnaryInfC{$A_p,\, \mathsf{ts}(\mathit{id}) \evalto
-    A_p[\,\mathsf{ctr} \mapsto \mathrm{max}(A(\mathsf{ctr}), c)\,]$}
-\DisplayProof\proofSkipAmount
+\begin{prooftree}
+\AxiomC{$A_p,\, \mathit{expr} \evalto \mathit{cur}$}
+\AxiomC{$\mathit{val}: \mathrm{VAL} \,\wedge\, \mathit{val} \not= \texttt{[]}
+    \,\wedge\, \mathit{val} \not= \texttt{\string{\string}} $}
+\AxiomC{$A_p,\, \mathsf{makeOp}(\mathit{cur}, \mathsf{assign}(\mathit{val})) \evalto A_p'$}
+\LeftLabel{\textsc{Assign}}
+\TrinaryInfC{$A_p,\, \mathit{expr} \,\text{ := }\, \mathit{val} \evalto A_p'$}
+\end{prooftree}
+
+\begin{prooftree}
+\AxiomC{$A_p,\, \mathit{expr} \evalto \mathit{cur}$}
+\AxiomC{$\mathit{val}: \mathrm{VAL}$}
+\AxiomC{$A_p,\, \mathsf{makeOp}(\mathit{cur}, \mathsf{insert}(\mathit{val})) \evalto A_p'$}
+\LeftLabel{\textsc{Insert}}
+\TrinaryInfC{$A_p,\, \mathit{expr}.\mathsf{insert}(\mathit{val}) \evalto A_p'$}
+\end{prooftree}
+
+\begin{prooftree}
+\AxiomC{$A_p,\, \mathit{expr} \evalto \mathit{cur}$}
+\AxiomC{$A_p,\, \mathsf{makeOp}(\mathit{cur}, \mathsf{delete}) \evalto A_p'$}
+\LeftLabel{\textsc{Delete}}
+\BinaryInfC{$A_p,\, \mathit{expr}.\mathsf{delete} \evalto A_p'$}
+\end{prooftree}
+
+\begin{prooftree}
+\AxiomC{$\mathit{ctr} = \mathrm{max}(\{0\} \,\cup\, \{ c_i \mid (c_i, p_i) \in A_p(\mathsf{ops}) \}$}
+\AxiomC{$A_p,\, \mathsf{apply}(\mathsf{op}((\mathit{ctr} + 1, p), A_p(\mathsf{ops}),
+    \mathit{cur}, \mathit{mut})) \evalto A_p'$}
+\LeftLabel{\textsc{Make-Op}}
+\BinaryInfC{$A_p,\, \mathsf{makeOp}(\mathit{cur}, \mathit{mut}) \evalto A_p'$}
+\end{prooftree}
+
+\begin{prooftree}
+\AxiomC{$A_p,\, \mathit{op} \evalto A_p'$}
+\LeftLabel{\textsc{Apply-Local}}
+\UnaryInfC{$A_p,\, \mathsf{apply}(\mathit{op}) \evalto A_p'[\,
+    \mathsf{queue} \,\mapsto\, A_p'(\mathsf{queue}) \,\cup\, \{\mathit{op}\},\;
+    \mathsf{ops} \,\mapsto\, A_p'(\mathsf{ops}) \,\cup\, \{\mathit{op.id}\}\,]$}
+\end{prooftree}
+
+\begin{prooftree}
+\AxiomC{$\mathit{op} \in A_p(\mathsf{recv})$}
+\AxiomC{$\mathit{op.id} \notin A_p(\mathsf{ops})$}
+\AxiomC{$\mathit{op.deps} \subseteq A_p(\mathsf{ops})$}
+\AxiomC{$A_p,\, \mathit{op} \evalto A_p'$}
+\LeftLabel{\textsc{Apply-Remote}}
+\QuaternaryInfC{$A_p,\, \mathsf{yield} \evalto
+    A_p'[\,\mathsf{ops} \,\mapsto\, A_p'(\mathsf{ops}) \,\cup\, \{\mathit{op.id}\}\,]$}
+\end{prooftree}
 
 \begin{prooftree}
 \AxiomC{}
@@ -295,32 +350,37 @@ If one operation happened before another, this ordering is consistent with causa
 \end{prooftree}
 
 \begin{prooftree}
-\AxiomC{$q \in \mathit{peers}$}
+\AxiomC{$q: \mathrm{PeerID}$}
 \LeftLabel{\textsc{Recv}}
 \UnaryInfC{$A_p,\, \mathsf{yield} \evalto
     A_p[\,\mathsf{recv} \,\mapsto\, A_p(\mathsf{recv}) \,\cup\, A_q(\mathsf{send})\,]$}
 \end{prooftree}
 
 \begin{prooftree}
-\AxiomC{$A_p,\, \mathit{op} \evalto A_p'$}
-\AxiomC{$\mathit{queue} = A_p'(\mathsf{queue}) \,\cup\, \{(A_p'(\mathsf{ops}), \mathit{op})\}$}
-\LeftLabel{\textsc{Apply-Local}}
-\BinaryInfC{$A_p,\, \mathsf{apply}(\mathit{op}) \evalto A_p'[\,
-    \mathsf{queue} \,\mapsto\, \mathit{queue},\;
-    \mathsf{ops} \,\mapsto\, A_p''(\mathsf{ops}) \,\cup\, \{\mathit{op}\}\,]$}
+\AxiomC{$A_p,\, \mathsf{yield} \evalto A_p'$}
+\AxiomC{$A_p',\, \mathsf{yield} \evalto A_p''$}
+\LeftLabel{\textsc{Yield}}
+\BinaryInfC{$A_p,\, \mathsf{yield} \evalto A_p''$}
 \end{prooftree}
-
-\begin{prooftree}
-\AxiomC{$(\mathit{deps}, \mathit{op}) \in A_p(\mathsf{recv})$}
-\AxiomC{$\mathit{deps} \subseteq A_p(\mathsf{ops})$}
-\AxiomC{$A_p,\, \mathit{op} \evalto A_p'$}
-\LeftLabel{\textsc{Apply-Remote}}
-\TrinaryInfC{$A_p,\, \mathsf{yield} \evalto
-    A_p'[\,\mathsf{ops} \,\mapsto\, A_p'(\mathsf{ops}) \,\cup\, \{\mathit{op}\}\,]$}
-\end{prooftree}
-\caption{Rules for Lamport timestamps, sending, receiving, and applying operations}
+\caption{Rules for generating, sending, and receiving operations}
 \label{fig:send-recv}
 \end{figure*}
+
+The formal evaluation rules for commands are given in Figure~\ref{fig:send-recv}. The \textsc{Assign}, \textsc{Insert} and \textsc{Delete} rules define how these respective commands mutate the document: all three delegate to the \textsc{Make-Op} rule to generate and apply the operation. \textsc{Make-Op} generates a new Lamport timestamp by choosing a counter value that is 1 greater than any existing counter in $A_p(\mathsf{ops})$, the set of all operation IDs that have been applied to the document.
+
+\textsc{Make-Op} constructs an \textsf{op()} tuple of the form described above, and delegates to the \textsc{Apply-Local} rule to process the operation. \textsc{Apply-Local} does three things: it evaluates the operation to produce a modified local state $A_p'$, it adds the operation to the queue of generated operations $A_p(\mathsf{queue})$, and it adds the operation ID to the set of processed operations $A_p(\mathsf{ops})$.
+
+The remaining rules in Figure~\ref{fig:send-recv}, \textsc{Apply-Remote}, \textsc{Send}, \textsc{Recv} and \textsc{Yield} define the semantics of the \textsf{yield} command. Since any of these rules can be used to evaluate \textsf{yield}, the semantics is nondeterministic, which models the asynchronicity of the network between peers: a message sent by one peer arrives at another peer at some arbitrarily later point in time, and there is no mesage ordering guarantee in the network.
+
+The \textsc{Send} rule takes any operations that were placed in $A_p(\mathsf{queue})$ by \textsc{Apply-Local} and adds them to a send buffer $A_p(\mathsf{send})$. Correspondingly, the \textsc{Recv} rule takes operations in the send buffer of peer $q$ and adds them to the receive buffer $A_p(\mathsf{recv})$ of peer $p$. This is the only rule that involves more than one peer, and it models all network communication.
+
+Once an operation appears in the receive buffer $A_p(\mathsf{recv})$, the rule \textsc{Apply-Remote} may apply. Under the preconditions that the operation has not already been processed and that its causal dependencies are satisified, \textsc{Apply-Remote} evaluates the operation in the same way as \textsc{Apply-Local}, and adds the operation ID to the set of processed operations $A_p(\mathsf{ops})$.
+
+The actual document modifications are performed by evaluating the operations, which we discuss in the next section.
+
+\subsection{Applying operations}
+
+% TODO
 
 \begin{figure*}
 \begin{prooftree}
