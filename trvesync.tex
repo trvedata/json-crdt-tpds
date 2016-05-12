@@ -384,46 +384,76 @@ The actual document modifications are performed by evaluating the operations, wh
 
 \begin{figure*}
 \begin{prooftree}
-\AxiomC{$A_p,\, \mathsf{newID} \evalto A_p',\, \mathit{id}$}
-\AxiomC{$A_p',\, \mathsf{apply}(\mathsf{listOp}(\mathit{id})) \evalto A_p''$}
-\LeftLabel{\textsc{Alloc-List}}
-\BinaryInfC{$A_p,\, \mathsf{listCmd} \evalto A_p'',\, \mathit{id}$}
+\AxiomC{$k_1 \in \mathrm{dom}(\mathit{ctx})$}
+\AxiomC{$\mathit{ctx}(k_1),\, \mathsf{op}(\mathit{id}, \mathit{deps},
+    \mathsf{cursor}(\langle k_2, \dots, k_{n-1} \rangle,\, k_n), \mathit{mut}) \evalto \mathit{state}$}
+\LeftLabel{\textsc{Descend}}
+\BinaryInfC{$\mathit{ctx},\, \mathsf{op}(\mathit{id}, \mathit{deps},
+    \mathsf{cursor}(\langle k_1, k_2, \dots, k_{n-1} \rangle,\, k_n), \mathit{mut}) \evalto
+    \mathit{ctx}[\, k_1 \,\mapsto\, \mathit{state} \,]$}
 \end{prooftree}
 
 \begin{prooftree}
-\AxiomC{$\mathit{prev} \in \mathrm{dom}(A_p)$}
-\AxiomC{$A_p,\, \mathsf{newID} \evalto A_p',\, \mathit{id}$}
-\AxiomC{$A_p',\, \mathsf{apply}(\mathsf{insertOp}(\mathit{id}, \mathit{prev}, v)) \evalto A_p''$}
-\LeftLabel{\textsc{Insert}}
-\TrinaryInfC{$A_p,\, \mathsf{insertCmd}(\mathit{prev}, v) \evalto A_p'',\, \mathit{id}$}
+\AxiomC{$k_1 \notin \mathrm{dom}(\mathit{ctx})$}
+\AxiomC{$k_1 = \mathsf{mapT}(k_\mathit{new})$}
+\AxiomC{$\{\},\, \mathsf{op}(\mathit{id}, \mathit{deps},
+    \mathsf{cursor}(\langle k_2, \dots, k_{n-1} \rangle,\, k_n), \mathit{mut}) \evalto \mathit{state}$}
+\LeftLabel{\textsc{Def-Map}}
+\TrinaryInfC{$\mathit{ctx},\, \mathsf{op}(\mathit{id}, \mathit{deps},
+    \mathsf{cursor}(\langle k_1, k_2, \dots, k_{n-1} \rangle,\, k_n), \mathit{mut}) \evalto
+    \mathit{ctx}[\, k_1 \,\mapsto\, \mathit{state} \,]$}
 \end{prooftree}
 
 \begin{prooftree}
-\AxiomC{$\mathit{target} \in \mathrm{dom}(A_p)$}
-\AxiomC{$A_p,\, \mathsf{newID} \evalto A_p',\, \mathit{id}$}
-\AxiomC{$A_p',\, \mathsf{apply}(\mathsf{deleteOp}(\mathit{id}, \mathit{target})) \evalto A_p''$}
-\LeftLabel{\textsc{Delete}}
-\TrinaryInfC{$A_p,\, \mathsf{deleteCmd}(\mathit{target}) \evalto A_p'',\, \bot$}
+\AxiomC{$k_1 \notin \mathrm{dom}(\mathit{ctx})$}
+\AxiomC{$k_1 = \mathsf{listT}(k_\mathit{new})$}
+\AxiomC{$\begin{matrix}
+    \{\mathsf{next}(\mathsf{head}) \mapsto \mathsf{tail}\}, \mathsf{op}(\mathit{id}, \mathit{deps}, \\
+    \mathsf{cursor}(\langle k_2, \dots, k_{n-1} \rangle,\, k_n), \mathit{mut}) \evalto \mathit{state}
+    \end{matrix} $}
+\LeftLabel{\textsc{Def-List}}
+\TrinaryInfC{$\mathit{ctx},\, \mathsf{op}(\mathit{id}, \mathit{deps},
+    \mathsf{cursor}(\langle k_1, k_2, \dots, k_{n-1} \rangle,\, k_n), \mathit{mut}) \evalto
+    \mathsf{ctx}[\, k_1 \,\mapsto\, \mathit{state} \,]$}
 \end{prooftree}
 
 \begin{prooftree}
-\AxiomC{$\mathit{id} \not\in \mathrm{dom}(A_p)$}
-\AxiomC{$A_p,\, \mathsf{ts}(\mathit{id}) \evalto A_p'$}
-\LeftLabel{\textsc{Apply-List}}
-\BinaryInfC{$A_p,\, \mathsf{listOp}(\mathit{id}) \evalto
-    A_p'[\,\mathit{id} \,\mapsto\, \mathsf{listEl}(\bot, \mathsf{tail})\,]$}
+\AxiomC{$\mathit{val} \not= \texttt{[]} \,\wedge\, \mathit{val} \not= \texttt{\string{\string}}$}
+\AxiomC{$\mathsf{regT}(k) \in \mathrm{dom}(\mathit{ctx})$}
+\AxiomC{$\begin{matrix}
+    \mathit{concurrent} = \{ \mathit{id}_i \mapsto v_i \mid
+    (\mathit{id}_i \mapsto v_i) \in \mathit{ctx}(\mathsf{regT}(k)) \\
+    \wedge\, \mathit{id}_i \notin \mathit{deps} \}
+    \end{matrix} $}
+\LeftLabel{$\textsc{Assign}_1$}
+\TrinaryInfC{$\mathit{ctx},\, \mathsf{op}(\mathit{id}, \mathit{deps},
+    \mathsf{cursor}(\langle\rangle,\, k), \mathsf{assign}(\mathit{val})) \evalto
+    \mathsf{ctx}[\, \mathsf{regT}(k) \,\mapsto\,
+    \mathit{concurrent}[\, \mathit{id} \,\mapsto\, \mathit{val} \,]\,]$}
 \end{prooftree}
 
 \begin{prooftree}
-\AxiomC{$\mathit{id} \not\in \mathrm{dom}(A_p)$}
-\AxiomC{$A_p(\mathit{prev}) = \mathsf{listEl}(v_\mathit{prev}, \mathit{next})$}
+\AxiomC{$\mathit{val} \not= \texttt{[]} \,\wedge\, \mathit{val} \not= \texttt{\string{\string}}$}
+\AxiomC{$\mathsf{regT}(k) \notin \mathrm{dom}(\mathit{ctx})$}
+\LeftLabel{$\textsc{Assign}_2$}
+\BinaryInfC{$\mathit{ctx},\, \mathsf{op}(\mathit{id}, \mathit{deps},
+    \mathsf{cursor}(\langle\rangle,\, k), \mathsf{assign}(\mathit{val})) \evalto
+    \mathsf{ctx}[\, \mathsf{regT}(k) \,\mapsto\, \{\, \mathit{id} \,\mapsto\, \mathit{val} \,\}\,]$}
+\end{prooftree}
+
+\begin{prooftree}
+\AxiomC{$\mathit{ctx}(\mathsf{next}(\mathit{prev})) = \mathit{next}$}
 \AxiomC{$\mathit{next} < \mathit{id} \,\vee\, \mathit{next} = \mathsf{tail}$}
-\AxiomC{$A_p,\, \mathsf{ts}(\mathit{id}) \evalto A_p'$}
-\LeftLabel{$\textsc{Apply-Ins}_1$}
-\QuaternaryInfC{$A_p,\, \mathsf{insertOp}(\mathit{id}, \mathit{prev}, v) \evalto
-    A_p'[\,\mathit{prev} \,\mapsto\, \mathsf{listEl}(v_\mathit{prev}, \mathit{id}),\;
-    \mathit{id} \,\mapsto\, \mathsf{listEl}(v, \mathit{next})\,]$}
+\AxiomC{$\mathit{ctx},\, \mathsf{op}(\mathit{id}, \mathit{deps},
+    \mathsf{cursor}(\langle\rangle,\, \mathit{id}), \mathsf{assign}(\mathit{val})) \evalto \mathit{ctx}'$}
+\LeftLabel{$\textsc{Insert}_1$}
+\TrinaryInfC{$\mathit{ctx},\, \mathsf{op}(\mathit{id}, \mathit{deps},
+    \mathsf{cursor}(\langle\rangle,\, \mathit{prev}), \mathsf{insert}(\mathit{val})) \evalto
+    \mathit{ctx}'[\,\mathsf{next}(\mathit{prev}) \,\mapsto\, \mathit{id},\;
+    \mathsf{next}(\mathit{id}) \,\mapsto\, \mathit{next}\,]$}
 \end{prooftree}
+
+% TODO need to update the next two rules
 
 \begin{prooftree}
 \AxiomC{$A_p(\mathit{prev}) = \mathsf{listEl}(v_\mathit{prev}, \mathit{next})$}
@@ -440,8 +470,7 @@ The actual document modifications are performed by evaluating the operations, wh
 \BinaryInfC{$A_p,\, \mathsf{deleteOp}(\mathit{id}, \mathit{target}) \evalto
     A_p'[\,\mathit{target} \,\mapsto\, \mathsf{listEl}(\bot, \mathit{next})\,]$}
 \end{prooftree}
-\caption{Rules for mutating an ordered list}
-\label{fig:rga-rules}
+\caption{Rules for evaluating operations and modifying document state}\label{fig:operation-rules}
 \end{figure*}
 
 
