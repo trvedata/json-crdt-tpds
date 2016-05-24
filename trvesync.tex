@@ -79,9 +79,10 @@ CMD & ::= & \textsf{let} $x$ = EXPR & $x \in \mathrm{VAR}$ \\
 & $|$ & CMD; CMD \vspace{0.5em}\\
 EXPR & ::= & \textsf{doc} \\
 & $|$ & $x$ & $x \in \mathrm{VAR}$ \\
-& $|$ & EXPR.\textsf{get}(\textit{key}) & $\mathit{key} \in \mathrm{String}$ \\
+& $|$ & EXPR[\verb|"key"|] & $\mathtt{key} \in \mathrm{String}$ \\
 & $|$ & EXPR.\textsf{iter} \\
 & $|$ & EXPR.\textsf{next} \\
+& $|$ & EXPR.\textsf{keys} \\
 & $|$ & EXPR.\textsf{values} \vspace{0.5em}\\
 VAR & ::= & ${x_1, x_2, \dots}$ \vspace{0.5em}\\
 VAL & ::= & $n$ & $n \in \mathrm{Number}$ \\
@@ -96,7 +97,7 @@ VAL & ::= & $n$ & $n \in \mathrm{Number}$ \\
 \centering
 \begin{verbatim}
 doc := {};
-let list = doc.get("shopping").iter;
+let list = doc["shopping"].iter;
 list.insert("eggs");
 let eggs = list.next;
 eggs.insert("milk");
@@ -111,19 +112,21 @@ eggs.next.values // evaluates to {"milk"}
 \caption{Example of programmatically constructing a JSON document}\label{fig:make-doc}
 \end{figure}
 
-\subsection{Command language}
+\subsection{Command language introduction}
 
-The syntax of the command language is given in Figure~\ref{fig:local-syntax}. It is not a full programming language, but rather an API through which the document state is queried and modified. We assume that the program accepts user input and issues a (possibly infinite) sequence of commands to the API. We model only the semantics of those commands, and do not assume anything about the program in which the command language is embedded.
+The syntax of the command language is given in Figure~\ref{fig:local-syntax}. It is not a full programming language, but rather an API through which the document state is queried and modified. We assume that the program accepts user input and issues a (possibly infinite) sequence of commands to the API. We model only the semantics of those commands, and do not assume anything about the program in which the command language is embedded. The API differs slightly from the JSON libraries found in many programming languages, in order to allow us to define consistent merge semantics.
 
-We first explain the language informally, before giving its formal semantics. The expression construct EXPR is used to query the state of a document. An expression starts with either the special token \textsf{doc}, identifying the root of the JSON document tree, or a variable $x$ that was previously defined in a \textsf{let} command. The expression then continues with a sequence of method calls: $\mathsf{get}(\mathit{key})$ selects a key within a map, \textsf{iter} starts iterating over an ordered list, \textsf{next} moves to the next element of an ordered list, and \textsf{values} returns the value of the register at the current position within the document. (\textsf{values} is not defined for map or list nodes.)
+We first explain the language informally, before giving its formal semantics. The expression construct EXPR is used to construct a \emph{cursor} which identifies a position in the document. An expression starts with either the special token \textsf{doc}, identifying the root of the JSON document tree, or a variable $x$ that was previously defined in a \textsf{let} command. Moving left to right through the expression, the cursor is navigated through the tree: the subscript operator \verb|["key"]| selects a key within a map, \textsf{iter} starts iterating over an ordered list and \textsf{next} moves to the next element of an ordered list.
 
-A command CMD either sets the value of a local variable (\textsf{let}), performs network communication (\textsf{yield}), or modifies the document. A document can be modified by assigning the value of a register (using the assignment operator :=), by inserting an element into a list (\textsf{insert}), or by deleting an element from a list or a map (\textsf{delete}). The preceding expression EXPR acts as a cursor, identifying the part of the document being modified.
+The expression construct EXPR can also query the state of the document: \textsf{keys} returns the set of keys in the map at the current cursor, and \textsf{values} returns the value of the register at the current cursor. (\textsf{values} is not defined if the cursor refers to a map or list.)
+
+A command CMD either sets the value of a local variable (\textsf{let}), performs network communication (\textsf{yield}), or modifies the document. A document can be modified by assigning the value of a register (using the assignment operator :=), by inserting an element into a list (\textsf{insert}), or by deleting an element from a list or a map (\textsf{delete}). The preceding expression EXPR defines the cursor that identifies the part of the document being modified.
 
 Figure~\ref{fig:make-doc} shows an example sequence of commands that constructs a new document representing a shopping list. First \textsf{doc} is set to \verb|{}|, the empty map literal. The second line navigates to the key \verb|"shopping"| and calls \textsf{iter}, which treats the value at that key as a list and selects the head of the list. If the key does not exist, it is implicitly created and set to the empty list. Finally, three items are inserted into the list. The \textsf{insert} command adds a new list element \emph{after} the current cursor position, or at the head if the cursor is at the head of the list. The variable \verb|list| refers to the head, so cheese is inserted before eggs, but the variable \verb|eggs| refers to the list element ``eggs'', so milk is inserted after eggs.
 
 A few features of this language deliberately differ from most mainstream programming languages: keys in maps are implicitly created when they are first accessed, so there is no need for a command to put a new key-value pair into a map; lists can only be navigated by iteration (\textsf{next}) but not by index; and the language has literals for creating empty maps and lists, but not for non-empty collections. As we shall see later, these features are helpful for achieving desirable semantics in the presence of concurrent modifications.
 
-\subsubsection{Semantics of expression evaluation}
+\subsection{Local expression evaluation}
 
 \begin{figure}
 \centering \begin{alignat*}{3}
@@ -131,12 +134,13 @@ A few features of this language deliberately differ from most mainstream program
     \mathsf{listT}(\text{``shopping''}) \mapsto \{ } \\
 &&&& \mathsf{next}(\mathsf{head}) & \mapsto \mathit{id}_3, \\
 &&&& \mathsf{regT}(\mathit{id}_3) & \mapsto \{\,\mathit{id}_3 \mapsto \text{``cheese''})\,\}, \\
-&&&& \mathsf{next}(\mathit{id}_3) & \mapsto \mathit{id_1}, \\
+&&&& \mathsf{next}(\mathit{id}_3) & \mapsto \mathit{id_1},\; \mathsf{pres}(\mathit{id}_3) \mapsto \{\mathit{id}_3\}, \\
 &&&& \mathsf{regT}(\mathit{id}_1) & \mapsto \{\,\mathit{id}_1 \mapsto \text{``eggs''})\,\}, \\
-&&&& \mathsf{next}(\mathit{id}_1) & \mapsto \mathit{id_2}, \\
+&&&& \mathsf{next}(\mathit{id}_1) & \mapsto \mathit{id_2},\; \mathsf{pres}(\mathit{id}_1) \mapsto \{\mathit{id}_1\}, \\
 &&&& \mathsf{regT}(\mathit{id}_2) & \mapsto \{\,\mathit{id}_2 \mapsto \text{``milk''})\,\}, \\
-&&&& \mathsf{next}(\mathit{id}_2) & \mapsto \mathsf{tail} \\
-&&& \}\;\}, \\
+&&&& \mathsf{next}(\mathit{id}_2) & \mapsto \mathsf{tail},\; \mathsf{pres}(\mathit{id}_2) \mapsto \{\mathit{id}_2\} \\
+&&& \multialign{3}{\},\;
+    \mathsf{pres}(\text{``shopping''}) \mapsto \{\mathit{id}_1, \mathit{id}_2, \mathit{id}_3\} \;\},} \\
 && \mathsf{list} & \multialign{3}{\mapsto \mathsf{cursor}(\langle \mathsf{mapT}(\mathsf{doc}),%
     \mathsf{listT}(\text{``shopping''})\rangle,\, \mathsf{head}),} \\
 && \mathsf{eggs} & \multialign{3}{\mapsto \mathsf{cursor}(\langle \mathsf{mapT}(\mathsf{doc}),%
@@ -187,28 +191,66 @@ A few features of this language deliberately differ from most mainstream program
     \mathsf{cursor}(\langle k_1, \dots, k_{n-1}, \mathsf{listT}(k_n) \rangle,\, \mathsf{head})$}
 \end{prooftree}
 
-\begin{center}
+\begin{prooftree}
 \AxiomC{$A_p,\, \mathit{expr} \evalto \mathit{cur}$}
 \AxiomC{$A_p,\, \mathit{cur}.\mathsf{next} \evalto \mathit{cur}'$}
 \LeftLabel{$\textsc{Next}_1$}
 \BinaryInfC{$A_p,\, \mathit{expr}.\mathsf{next} \evalto \mathit{cur}'$}
-\DisplayProof\hfill
-%
-\AxiomC{$\mathsf{next}(k) \in \mathrm{dom}(\mathit{ctx})$}
-\AxiomC{$\mathit{ctx}(\mathsf{next}(k)) = k'$}
+\end{prooftree}
+
+\begin{prooftree}
+\AxiomC{$\mathit{ctx}(\mathsf{next}(k)) = k' \,\wedge\, k' \not= \mathsf{tail}$}
+\AxiomC{$\mathit{ctx}(\mathsf{pres}(k')) \not= \{\}$}
 \LeftLabel{$\textsc{Next}_2$}
 \BinaryInfC{$\mathit{ctx},\, \mathsf{cursor}(\langle\rangle,\, k).\mathsf{next} \evalto
     \mathsf{cursor}(\langle\rangle,\, k')$}
-\DisplayProof\proofSkipAmount
-\end{center}
+\end{prooftree}
+
+\begin{prooftree}
+\AxiomC{$\mathit{ctx}(\mathsf{next}(k)) = k' \,\wedge\, k' \not= \mathsf{tail}$}
+\AxiomC{$\mathit{ctx}(\mathsf{pres}(k')) = \{\}$}
+\AxiomC{$\mathit{ctx},\, \mathsf{cursor}(\langle\rangle,\, k').\mathsf{next} \evalto \mathit{cur}'$}
+\LeftLabel{$\textsc{Next}_3$}
+\TrinaryInfC{$\mathit{ctx},\, \mathsf{cursor}(\langle\rangle,\, k).\mathsf{next} \evalto \mathit{cur}'$}
+\end{prooftree}
 
 \begin{prooftree}
 \AxiomC{$k_1 \in \mathrm{dom}(\mathit{ctx})$}
 \AxiomC{$\mathit{ctx}(k_1),\, \mathsf{cursor}(\langle k_2, \dots, k_{n-1} \rangle,\, k_n).\mathsf{next}
     \evalto \mathsf{cursor}(\langle k_2, \dots, k_{n-1} \rangle,\, k_n')$}
-\LeftLabel{$\textsc{Next}_3$}
+\LeftLabel{$\textsc{Next}_4$}
 \BinaryInfC{$\mathit{ctx},\, \mathsf{cursor}(\langle k_1, k_2, \dots, k_{n-1} \rangle,\, k_n).\mathsf{next}
     \evalto \mathsf{cursor}(\langle k_1, k_2, \dots, k_{n-1} \rangle,\, k_n')$}
+\end{prooftree}
+
+\[ \mathrm{keys}(\mathit{ctx}) = \{\; k \mid
+    \mathsf{mapT}(k)  \in \mathrm{dom}(\mathit{ctx}) \,\vee\,
+    \mathsf{listT}(k) \in \mathrm{dom}(\mathit{ctx}) \,\vee\,
+    \mathsf{regT}(k)  \in \mathrm{dom}(\mathit{ctx})
+\;\} \]
+
+\begin{prooftree}
+\AxiomC{$A_p,\, \mathit{expr} \evalto \mathit{cur}$}
+\AxiomC{$A_p,\, \mathit{cur}.\mathsf{keys} \evalto \mathit{keys}$}
+\LeftLabel{$\textsc{Keys}_1$}
+\BinaryInfC{$A_p,\, \mathit{expr}.\mathsf{keys} \evalto \mathit{keys}$}
+\end{prooftree}
+
+\begin{prooftree}
+\AxiomC{$\mathit{map} = \mathit{ctx}(\mathsf{mapT}(k))$}
+\AxiomC{$\mathit{keys} = \{\; k \mid k \in \mathrm{keys}(\mathit{map}) \,\wedge\,
+    \mathit{map}(\mathsf{pres}(k)) \not= \{\} \;\}$}
+\LeftLabel{$\textsc{Keys}_2$}
+\BinaryInfC{$A_p,\, \mathsf{cursor}(\langle\rangle,\, k).\mathsf{keys} \evalto \mathit{keys}$}
+\end{prooftree}
+
+\begin{prooftree}
+\AxiomC{$k_1 \in \mathrm{dom}(\mathit{ctx})$}
+\AxiomC{$\mathit{ctx}(k_1),\, \mathsf{cursor}(\langle k_2, \dots, k_{n-1} \rangle,\, k_n).\mathsf{keys}
+    \evalto \mathit{keys}$}
+\LeftLabel{$\textsc{Keys}_3$}
+\BinaryInfC{$\mathit{ctx},\, \mathsf{cursor}(\langle k_1, k_2, \dots, k_{n-1} \rangle,\, k_n).\mathsf{keys}
+    \evalto \mathit{keys}$}
 \end{prooftree}
 
 \begin{prooftree}
@@ -295,10 +337,9 @@ The purpose of the causal dependencies $\mathit{deps}$ is to impose a partial or
 \centering
 \begin{prooftree}
 \AxiomC{$A_p,\, \mathit{expr} \evalto \mathit{cur}$}
-\AxiomC{$\mathit{val}: \mathrm{VAL} \,\wedge\, \mathit{val} \not= \texttt{[]}
-    \,\wedge\, \mathit{val} \not= \texttt{\string{\string}} $}
+\AxiomC{$\mathit{val}: \mathrm{VAL}$}
 \AxiomC{$A_p,\, \mathsf{makeOp}(\mathit{cur}, \mathsf{assign}(\mathit{val})) \evalto A_p'$}
-\LeftLabel{\textsc{Assign}}
+\LeftLabel{\textsc{Make-Assign}}
 \TrinaryInfC{$A_p,\, \mathit{expr} \,\text{ := }\, \mathit{val} \evalto A_p'$}
 \end{prooftree}
 
@@ -306,14 +347,14 @@ The purpose of the causal dependencies $\mathit{deps}$ is to impose a partial or
 \AxiomC{$A_p,\, \mathit{expr} \evalto \mathit{cur}$}
 \AxiomC{$\mathit{val}: \mathrm{VAL}$}
 \AxiomC{$A_p,\, \mathsf{makeOp}(\mathit{cur}, \mathsf{insert}(\mathit{val})) \evalto A_p'$}
-\LeftLabel{\textsc{Insert}}
+\LeftLabel{\textsc{Make-Insert}}
 \TrinaryInfC{$A_p,\, \mathit{expr}.\mathsf{insert}(\mathit{val}) \evalto A_p'$}
 \end{prooftree}
 
 \begin{prooftree}
 \AxiomC{$A_p,\, \mathit{expr} \evalto \mathit{cur}$}
 \AxiomC{$A_p,\, \mathsf{makeOp}(\mathit{cur}, \mathsf{delete}) \evalto A_p'$}
-\LeftLabel{\textsc{Delete}}
+\LeftLabel{\textsc{Make-Delete}}
 \BinaryInfC{$A_p,\, \mathit{expr}.\mathsf{delete} \evalto A_p'$}
 \end{prooftree}
 
@@ -367,7 +408,7 @@ The purpose of the causal dependencies $\mathit{deps}$ is to impose a partial or
 \label{fig:send-recv}
 \end{figure*}
 
-The formal evaluation rules for commands are given in Figure~\ref{fig:send-recv}. The \textsc{Assign}, \textsc{Insert} and \textsc{Delete} rules define how these respective commands mutate the document: all three delegate to the \textsc{Make-Op} rule to generate and apply the operation. \textsc{Make-Op} generates a new Lamport timestamp by choosing a counter value that is 1 greater than any existing counter in $A_p(\mathsf{ops})$, the set of all operation IDs that have been applied to the document.
+The formal evaluation rules for commands are given in Figure~\ref{fig:send-recv}. The \textsc{Make-Assign}, \textsc{Make-Insert} and \textsc{Make-Delete} rules define how these respective commands mutate the document: all three delegate to the \textsc{Make-Op} rule to generate and apply the operation. \textsc{Make-Op} generates a new Lamport timestamp by choosing a counter value that is 1 greater than any existing counter in $A_p(\mathsf{ops})$, the set of all operation IDs that have been applied to the document.
 
 \textsc{Make-Op} constructs an \textsf{op()} tuple of the form described above, and delegates to the \textsc{Apply-Local} rule to process the operation. \textsc{Apply-Local} does three things: it evaluates the operation to produce a modified local state $A_p'$, it adds the operation to the queue of generated operations $A_p(\mathsf{queue})$, and it adds the operation ID to the set of processed operations $A_p(\mathsf{ops})$.
 
