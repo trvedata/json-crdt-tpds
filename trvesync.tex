@@ -4,6 +4,7 @@
 \usepackage{amssymb} % mathbb
 \usepackage{mathptmx} % times roman, including math
 \usepackage{bussproofs} % notation for inference rules
+\usepackage{rotating} % sidewaysfigure
 \usepackage[hyphens]{url}
 \usepackage{doi}
 \usepackage{hyperref}
@@ -263,7 +264,7 @@ When commands mutate the state of the document, they generate \emph{operations} 
 
 Every operation in our model is given a unique identifier, which is used in the local state and in cursors. For example, in Figure~\ref{fig:state-example}, $\mathit{id}_{1,2,3}$ are used to identify list elements and also the values of registers. Those identifiers $\mathit{id}_{1,2,3}$ are in fact the identifiers of the operations that inserted the list elements.
 
-In order to generate globally unique operation identifiers without requiring synchronous coordination between peers we use Lamport timestamps~\cite{Lamport:1978jq}. A Lamport timestamp is a pair $(c, p)$ where $p$ is the unique identifier of the peer on which the edit is made (for example, a cryptographic hash of its public key), and $c$ is a counter that is stored at each peer and incremented for every operation. Since each peer generates a strictly monotonically increasing sequence of counter values $c$, the pair $(c, p)$ is unique.
+In order to generate globally unique operation identifiers without requiring synchronous coordination between peers we use Lamport timestamps~\cite{Lamport:1978jq}. A Lamport timestamp is a pair $(c, p)$ where $p \in \mathrm{PeerID}$ is the unique identifier of the peer on which the edit is made (for example, a cryptographic hash of its public key), and $c \in \mathbb{N}$ is a counter that is stored at each peer and incremented for every operation. Since each peer generates a strictly monotonically increasing sequence of counter values $c$, the pair $(c, p)$ is unique.
 
 If a peer receives an operation with a counter value $c$ that is greater than the locally stored counter value, the local counter is increased to the value of the incoming counter. This ensures that if operation $o_1$ happened before $o_2$ (that is, the peer that generated $o_2$ had received and processed $o_1$ before $o_2$ was generated), then $o_2$ must have a greater counter value than $o_1$. Only concurrent operations can have equal counter values.
 
@@ -274,12 +275,12 @@ If one operation happened before another, this ordering is consistent with causa
 \subsubsection{Operation structure}
 
 An operation is a tuple of the form
-\begin{alignat*}{2}
+\begin{alignat*}{3}
 & \mathsf{op}( \\
 && \mathit{id} &: \mathbb{N} \times \mathrm{PeerID}, \\
 && \mathit{deps} &: \mathcal{P}(\mathbb{N} \times \mathrm{PeerID}), \\
 && \mathit{cur} &: \mathsf{cursor}(\langle k_1, \dots, k_{n-1} \rangle,\, k_n), \\
-&& \mathit{mut} &: \mathsf{insert}(v) \mid \mathsf{delete} \mid \mathsf{assign}(v) \\
+&& \mathit{mut} &: \mathsf{insert}(v) \mid \mathsf{delete} \mid \mathsf{assign}(v) && \quad v: \mathrm{VAL} \\
 & )
 \end{alignat*}
 where $\mathit{id}$ is the Lamport timestamp that uniquely identifies the operation, $\mathit{cur}$ is the cursor describing the position in the document being modified, and $\mathit{mut}$ is the mutation that was requested at the specified position.
@@ -382,63 +383,93 @@ The actual document modifications are performed by evaluating the operations, wh
 
 % TODO
 
-\begin{figure*}
+\begin{sidewaysfigure*}
 \begin{prooftree}
-\AxiomC{$k_1 \in \mathrm{dom}(\mathit{ctx})$}
-\AxiomC{$\mathit{ctx}(k_1),\, \mathsf{op}(\mathit{id}, \mathit{deps},
-    \mathsf{cursor}(\langle k_2, \dots, k_{n-1} \rangle,\, k_n), \mathit{mut}) \evalto \mathit{state}$}
+\AxiomC{$\mathit{ctx},\, k_1 \evalto \mathit{child}$}
+\AxiomC{$\mathit{child},\, \mathsf{op}(\mathit{id}, \mathit{deps},
+    \mathsf{cursor}(\langle k_2, \dots, k_{n-1} \rangle,\, k_n), \mathit{mut}) \evalto \mathit{child}'$}
+\AxiomC{$\mathit{ctx},\, \mathsf{addId}(k_1, \mathit{id}) \evalto \mathit{ctx}'$}
 \LeftLabel{\textsc{Descend}}
-\BinaryInfC{$\mathit{ctx},\, \mathsf{op}(\mathit{id}, \mathit{deps},
-    \mathsf{cursor}(\langle k_1, k_2, \dots, k_{n-1} \rangle,\, k_n), \mathit{mut}) \evalto
-    \mathit{ctx}[\, k_1 \,\mapsto\, \mathit{state} \,]$}
-\end{prooftree}
-
-\begin{prooftree}
-\AxiomC{$k_1 \notin \mathrm{dom}(\mathit{ctx})$}
-\AxiomC{$k_1 = \mathsf{mapT}(k_\mathit{new})$}
-\AxiomC{$\{\},\, \mathsf{op}(\mathit{id}, \mathit{deps},
-    \mathsf{cursor}(\langle k_2, \dots, k_{n-1} \rangle,\, k_n), \mathit{mut}) \evalto \mathit{state}$}
-\LeftLabel{\textsc{Def-Map}}
 \TrinaryInfC{$\mathit{ctx},\, \mathsf{op}(\mathit{id}, \mathit{deps},
     \mathsf{cursor}(\langle k_1, k_2, \dots, k_{n-1} \rangle,\, k_n), \mathit{mut}) \evalto
-    \mathit{ctx}[\, k_1 \,\mapsto\, \mathit{state} \,]$}
+    \mathit{ctx}' [\, k_1 \,\mapsto\, \mathit{child}' \,]$}
 \end{prooftree}
 
-\begin{prooftree}
-\AxiomC{$k_1 \notin \mathrm{dom}(\mathit{ctx})$}
-\AxiomC{$k_1 = \mathsf{listT}(k_\mathit{new})$}
-\AxiomC{$\begin{matrix}
-    \{\mathsf{next}(\mathsf{head}) \mapsto \mathsf{tail}\}, \mathsf{op}(\mathit{id}, \mathit{deps}, \\
-    \mathsf{cursor}(\langle k_2, \dots, k_{n-1} \rangle,\, k_n), \mathit{mut}) \evalto \mathit{state}
-    \end{matrix} $}
-\LeftLabel{\textsc{Def-List}}
-\TrinaryInfC{$\mathit{ctx},\, \mathsf{op}(\mathit{id}, \mathit{deps},
-    \mathsf{cursor}(\langle k_1, k_2, \dots, k_{n-1} \rangle,\, k_n), \mathit{mut}) \evalto
-    \mathsf{ctx}[\, k_1 \,\mapsto\, \mathit{state} \,]$}
-\end{prooftree}
+\begin{center}
+\AxiomC{$k \in \mathrm{dom}(\mathit{ctx})$}
+\LeftLabel{\textsc{Child-Get}}
+\UnaryInfC{$\mathit{ctx},\, k \evalto \mathit{ctx}(k)$}
+\DisplayProof\hspace{3em}
+%
+\AxiomC{$\mathsf{mapT}(k) \notin \mathrm{dom}(\mathit{ctx})$}
+\LeftLabel{\textsc{Child-Map}}
+\UnaryInfC{$\mathit{ctx},\, \mathsf{mapT}(k) \evalto \{\}$}
+\DisplayProof\hspace{3em}
+%
+\AxiomC{$\mathsf{listT}(k) \notin \mathrm{dom}(\mathit{ctx})$}
+\LeftLabel{\textsc{Child-List}}
+\UnaryInfC{$\mathit{ctx},\, \mathsf{listT}(k) \evalto
+    \{\,\mathsf{next}(\mathsf{head}) \,\mapsto\, \mathsf{tail} \,\}$}
+\DisplayProof\proofSkipAmount
+\end{center}
 
-\begin{prooftree}
-\AxiomC{$\mathit{val} \not= \texttt{[]} \,\wedge\, \mathit{val} \not= \texttt{\string{\string}}$}
-\AxiomC{$\mathsf{regT}(k) \in \mathrm{dom}(\mathit{ctx})$}
-\AxiomC{$\begin{matrix}
-    \mathit{concurrent} = \{ \mathit{id}_i \mapsto v_i \mid
-    (\mathit{id}_i \mapsto v_i) \in \mathit{ctx}(\mathsf{regT}(k)) \\
-    \wedge\, \mathit{id}_i \notin \mathit{deps} \}
-    \end{matrix} $}
-\LeftLabel{$\textsc{Assign}_1$}
-\TrinaryInfC{$\mathit{ctx},\, \mathsf{op}(\mathit{id}, \mathit{deps},
-    \mathsf{cursor}(\langle\rangle,\, k), \mathsf{assign}(\mathit{val})) \evalto
-    \mathit{ctx}[\, \mathsf{regT}(k) \,\mapsto\,
-    \mathit{concurrent}[\, \mathit{id} \,\mapsto\, \mathit{val} \,]\,]$}
-\end{prooftree}
-
-\begin{prooftree}
-\AxiomC{$\mathit{val} \not= \texttt{[]} \,\wedge\, \mathit{val} \not= \texttt{\string{\string}}$}
+\begin{center}
 \AxiomC{$\mathsf{regT}(k) \notin \mathrm{dom}(\mathit{ctx})$}
-\LeftLabel{$\textsc{Assign}_2$}
-\BinaryInfC{$\mathit{ctx},\, \mathsf{op}(\mathit{id}, \mathit{deps},
+\LeftLabel{\textsc{Child-Reg}}
+\UnaryInfC{$\mathit{ctx},\, \mathsf{regT}(k) \evalto \{\}$}
+\DisplayProof\hspace{3em}
+%
+\AxiomC{$\mathsf{pres}(k) \in \mathrm{dom}(\mathit{ctx})$}
+\LeftLabel{$\textsc{Presence}_1$}
+\UnaryInfC{$\mathit{ctx},\, \mathsf{pres}(k) \evalto \mathit{ctx}(\mathsf{pres}(k))$}
+\DisplayProof\hspace{3em}
+%
+\AxiomC{$\mathsf{pres}(k) \notin \mathrm{dom}(\mathit{ctx})$}
+\LeftLabel{$\textsc{Presence}_2$}
+\UnaryInfC{$\mathit{ctx},\, \mathsf{pres}(k) \evalto \{\}$}
+\DisplayProof\proofSkipAmount
+\end{center}
+
+\begin{prooftree}
+\AxiomC{$k_\mathit{tag} \in \{\mathsf{mapT}(k), \mathsf{listT}(k), \mathsf{regT}(k)\}$}
+\AxiomC{$\mathit{ctx},\, \mathsf{pres}(k) \evalto \mathit{pres}$}
+\LeftLabel{\textsc{Add-ID}}
+\BinaryInfC{$\mathit{ctx},\, \mathsf{addId}(k_\mathit{tag}, \mathit{id}) \evalto
+    \mathit{ctx}[\, \mathsf{pres}(k) \,\mapsto\, \mathit{pres} \,\cup\, \{\mathit{id}\} \,]$}
+\end{prooftree}
+
+\begin{prooftree}
+\AxiomC{$\mathit{val} \not= \texttt{[]} \,\wedge\, \mathit{val} \not= \texttt{\string{\string}}$}
+\AxiomC{$\mathit{ctx},\, \mathsf{clear}(\mathit{deps}, \mathsf{regT}(k)) \evalto \mathit{ctx}',\, \mathit{pres}$}
+\AxiomC{$\mathit{ctx}',\, \mathsf{addId}(\mathsf{regT}(k), \mathit{id}) \evalto \mathit{ctx}''$}
+\AxiomC{$\mathit{ctx}'',\, \mathsf{regT}(k) \evalto \mathit{child}$}
+\LeftLabel{\textsc{Assign}}
+\QuaternaryInfC{$\mathit{ctx},\, \mathsf{op}(\mathit{id}, \mathit{deps},
     \mathsf{cursor}(\langle\rangle,\, k), \mathsf{assign}(\mathit{val})) \evalto
-    \mathit{ctx}[\, \mathsf{regT}(k) \,\mapsto\, \{\, \mathit{id} \,\mapsto\, \mathit{val} \,\}\,]$}
+    \mathit{ctx}''[\, \mathsf{regT}(k) \,\mapsto\,
+    \mathit{child}[\, \mathit{id} \,\mapsto\, \mathit{val} \,]\,]$}
+\end{prooftree}
+
+\begin{prooftree}
+\AxiomC{$\mathit{val} = \texttt{\string{\string}}$}
+\AxiomC{$\mathit{ctx},\, \mathsf{clearElem}(\mathit{deps}, k) \evalto \mathit{ctx}',\, \mathit{pres}$}
+\AxiomC{$\mathit{ctx}',\, \mathsf{addId}(\mathsf{mapT}(k), \mathit{id}) \evalto \mathit{ctx}''$}
+\AxiomC{$\mathit{ctx}'',\, \mathsf{mapT}(k) \evalto \mathit{child}$}
+\LeftLabel{\textsc{Empty-Map}}
+\QuaternaryInfC{$\mathit{ctx},\, \mathsf{op}(\mathit{id}, \mathit{deps},
+    \mathsf{cursor}(\langle\rangle,\, k), \mathsf{assign}(\mathit{val})) \evalto
+    \mathit{ctx}''[\, \mathsf{mapT}(k) \,\mapsto\, \mathit{child} \,]$}
+\end{prooftree}
+
+\begin{prooftree}
+\AxiomC{$\mathit{val} = \texttt{[]}$}
+\AxiomC{$\mathit{ctx},\, \mathsf{clearElem}(\mathit{deps}, k) \evalto \mathit{ctx}',\, \mathit{pres}$}
+\AxiomC{$\mathit{ctx}',\, \mathsf{addId}(\mathsf{listT}(k), \mathit{id}) \evalto \mathit{ctx}''$}
+\AxiomC{$\mathit{ctx}'',\, \mathsf{listT}(k) \evalto \mathit{child}$}
+\LeftLabel{\textsc{Empty-List}}
+\QuaternaryInfC{$\mathit{ctx},\, \mathsf{op}(\mathit{id}, \mathit{deps},
+    \mathsf{cursor}(\langle\rangle,\, k), \mathsf{assign}(\mathit{val})) \evalto
+    \mathit{ctx}''[\, \mathsf{listT}(k) \,\mapsto\, \mathit{child} \,]$}
 \end{prooftree}
 
 \begin{prooftree}
@@ -457,78 +488,125 @@ The actual document modifications are performed by evaluating the operations, wh
 \AxiomC{$\mathit{ctx}(\mathsf{next}(\mathit{prev})) = \mathit{next}$}
 \AxiomC{$\mathit{id} < \mathit{next}$}
 \AxiomC{$ctx,\, \mathsf{op}(\mathit{id}, \mathit{deps},
-    \mathsf{cursor}(\langle\rangle,\, \mathit{next}), \mathsf{assign}(\mathit{val})) \evalto \mathit{ctx}'$}
+    \mathsf{cursor}(\langle\rangle,\, \mathit{next}), \mathsf{insert}(\mathit{val})) \evalto \mathit{ctx}'$}
 \LeftLabel{$\textsc{Insert}_2$}
 \TrinaryInfC{$\mathit{ctx},\, \mathsf{op}(\mathit{id}, \mathit{deps},
     \mathsf{cursor}(\langle\rangle,\, \mathit{prev}), \mathsf{insert}(\mathit{val})) \evalto \mathit{ctx}'$}
 \end{prooftree}
+\caption{Rules for evaluating operations and modifying document state}\label{fig:operation-rules}
+\end{sidewaysfigure*}
+
+\begin{figure*}
+\begin{prooftree}
+\AxiomC{$\mathit{ctx},\, \mathsf{clearElem}(\mathit{deps}, k) \evalto \mathit{ctx}',\, \mathit{pres}$}
+\LeftLabel{\textsc{Delete}}
+\UnaryInfC{$\mathit{ctx},\, \mathsf{op}(\mathit{id}, \mathit{deps},
+    \mathsf{cursor}(\langle\rangle,\, k), \mathsf{delete}) \evalto \mathit{ctx}'$}
+\end{prooftree}
 
 \begin{prooftree}
-\AxiomC{$\mathsf{next}(\mathit{target}) \in \mathrm{dom}(\mathit{ctx})$}
-\LeftLabel{\textsc{List-Del}}
-\UnaryInfC{$\mathit{ctx},\, \mathsf{op}(\mathit{id}, \mathit{deps},
-    \mathsf{cursor}(\langle\rangle,\, \mathit{target}), \mathsf{listDel}) \evalto
-    \mathit{ctx}[\,\mathsf{deleted}(\mathit{target}) \,\mapsto\, \mathsf{true}\,]$}
+\AxiomC{$\mathit{ctx},\, \mathsf{clearAny}(\mathit{deps}, k) \evalto \mathit{ctx}', \mathit{pres}_1$}
+\AxiomC{$\mathit{ctx}',\, \mathsf{pres}(k) \evalto \mathit{pres}_2$}
+\AxiomC{$\mathit{pres}_3 = \mathit{pres}_1 \,\cup\, \mathit{pres}_2$}
+\LeftLabel{\textsc{Clear-Elem}}
+\TrinaryInfC{$\mathit{ctx},\, \mathsf{clearElem}(\mathit{deps}, k) \evalto
+    \mathit{ctx}' [\, \mathsf{pres}(k) \,\mapsto\, \mathit{pres}_3 \,],\, \mathit{pres}_3$}
+\end{prooftree}
+
+\begin{prooftree}
+\AxiomC{$\begin{matrix}
+    \mathit{ctx},\, \mathsf{clear}(\mathit{deps}, \mathsf{mapT}(k)) \\
+    \evalto \mathit{ctx}_1,\, \mathit{pres}_1 \end{matrix}$}
+\AxiomC{$\begin{matrix}
+    \mathit{ctx}_1,\, \mathsf{clear}(\mathit{deps}, \mathsf{listT}(k)) \\
+    \evalto \mathit{ctx}_2,\, \mathit{pres}_2 \end{matrix}$}
+\AxiomC{$\begin{matrix}
+    \mathit{ctx}_2,\, \mathsf{clear}(\mathit{deps}, \mathsf{regT}(k)) \\
+    \evalto \mathit{ctx}_3,\, \mathit{pres}_3 \end{matrix}$}
+\LeftLabel{\textsc{Clear-Any}}
+\TrinaryInfC{$\mathit{ctx},\, \mathsf{clearAny}(\mathit{deps}, k) \evalto
+    \mathit{ctx}_3,\, \mathit{pres}_1 \,\cup\, \mathit{pres}_2 \,\cup\, \mathit{pres}_3$}
+\end{prooftree}
+
+\begin{prooftree}
+\AxiomC{$k \notin \mathrm{dom}(\mathit{ctx})$}
+\LeftLabel{\textsc{Clear-None}}
+\UnaryInfC{$\mathit{ctx},\, \mathsf{clear}(\mathit{deps}, k) \evalto \mathit{ctx},\, \{\}$}
 \end{prooftree}
 
 \begin{prooftree}
 \AxiomC{$\mathsf{regT}(k) \in \mathrm{dom}(\mathit{ctx})$}
-\AxiomC{$\mathit{concurrent} = \{ \mathit{id}_i \mapsto v_i \mid
-    (\mathit{id}_i \mapsto v_i) \in \mathit{ctx}(\mathsf{regT}(k))
-    \,\wedge\, \mathit{id}_i \notin \mathit{deps} \}$}
+\AxiomC{$\mathit{concurrent} = \{ \mathit{id} \mapsto v \mid
+    (\mathit{id} \mapsto v) \in \mathit{ctx}(\mathsf{regT}(k))
+    \,\wedge\, \mathit{id} \notin \mathit{deps} \}$}
 \LeftLabel{\textsc{Clear-Reg}}
-\BinaryInfC{$\mathit{ctx},\, \mathsf{op}(\mathit{id}, \mathit{deps},
-    \mathsf{cursor}(\langle\rangle,\, k), \mathsf{clearReg}) \evalto
-    \mathit{ctx}[\, \mathsf{regT}(k) \,\mapsto\, \mathit{concurrent} \,]$}
+\BinaryInfC{$\mathit{ctx},\, \mathsf{clear}(\mathit{deps}, \mathsf{regT}(k)) \evalto
+    \mathit{ctx}[\, \mathsf{regT}(k) \,\mapsto\, \mathit{concurrent} \,],\, \mathrm{dom}(\mathit{concurrent})$}
+\end{prooftree}
+
+\begin{prooftree}
+\AxiomC{$\mathsf{mapT}(k) \in \mathrm{dom}(\mathit{ctx})$}
+\AxiomC{$\mathit{ctx}(\mathsf{mapT}(k)),\, \mathsf{clearMap}(\mathit{deps}, \{\}) \evalto
+    \mathit{cleared},\, \mathit{pres}$}
+\LeftLabel{$\textsc{Clear-Map}_1$}
+\BinaryInfC{$\mathit{ctx},\, \mathsf{clear}(\mathit{deps}, \mathsf{mapT}(k)) \evalto
+    \mathit{ctx} [\, \mathsf{mapT}(k) \,\mapsto\, \mathit{cleared} \,],\, \mathit{pres}$}
+\end{prooftree}
+
+\begin{prooftree}
+\AxiomC{$\begin{matrix}
+    k \in \mathrm{keys}(\mathit{ctx}) \\
+    \wedge\, k \notin \mathit{done} \end{matrix}$}
+\AxiomC{$\begin{matrix}
+    \mathit{ctx},\, \mathsf{clearElem}(\mathit{deps}, k) \\
+    \evalto \mathit{ctx}', \mathit{pres}_1 \end{matrix}$}
+\AxiomC{$\begin{matrix}
+    \mathit{ctx}',\, \mathsf{clearMap}(\mathit{deps}, \mathit{done} \cup \{k\}) \\
+    \evalto \mathit{ctx}'',\, \mathit{pres}_2 \end{matrix}$}
+\LeftLabel{$\textsc{Clear-Map}_2$}
+\TrinaryInfC{$\mathit{ctx},\, \mathsf{clearMap}(\mathit{deps}, \mathit{done})
+    \evalto \mathit{ctx}'',\, \mathit{pres}_1 \,\cup\, \mathit{pres}_2$}
+\end{prooftree}
+
+\begin{prooftree}
+\AxiomC{$\mathit{done} = \mathrm{keys}(\mathit{ctx})$}
+\LeftLabel{$\textsc{Clear-Map}_3$}
+\UnaryInfC{$\mathit{ctx},\, \mathsf{clearMap}(\mathit{deps}, \mathit{done}) \evalto \mathit{ctx},\, \{\}$}
 \end{prooftree}
 
 \begin{prooftree}
 \AxiomC{$\mathsf{listT}(k) \in \mathrm{dom}(\mathit{ctx})$}
-\AxiomC{$\mathit{ctx}(\mathsf{listT}(k)),\, \mathsf{op}(\mathit{id}, \mathit{deps},
-    \mathsf{cursor}(\langle\rangle,\, \mathsf{head}), \mathsf{clearElems}) \evalto \mathit{cleared}$}
-\LeftLabel{\textsc{Clear-List}}
-\BinaryInfC{$\mathit{ctx},\, \mathsf{op}(\mathit{id}, \mathit{deps},
-    \mathsf{cursor}(\langle\rangle,\, k), \mathsf{clearList}) \evalto
-    \mathit{ctx}[\, \mathsf{listT}(k) \,\mapsto\, \mathit{cleared} \,]$}
+\AxiomC{$\mathit{ctx}(\mathsf{listT}(k)),\, \mathsf{clearList}(\mathit{deps}, \mathsf{head})
+    \evalto \mathit{cleared},\, \mathit{pres}$}
+\LeftLabel{$\textsc{Clear-List}_1$}
+\BinaryInfC{$\mathit{ctx},\, \mathsf{clear}(\mathit{deps}, \mathsf{listT}(k)) \evalto
+    \mathit{ctx}[\, \mathsf{listT}(k) \,\mapsto\, \mathit{cleared} \,],\, \mathit{pres}$}
 \end{prooftree}
 
 \begin{prooftree}
-\AxiomC{$k \not= \mathsf{tail} \,\wedge\, k \in \mathit{deps}$}
-\AxiomC{$\mathit{ctx}(\mathsf{next}(k)) = \mathit{next}$}
-\AxiomC{$\mathit{ctx},\, \mathsf{op}(\mathit{id}, \mathit{deps},
-    \mathsf{cursor}(\langle\rangle,\, \mathit{next}), \mathsf{clearElems}) \evalto \mathit{ctx}'$}
-\LeftLabel{$\textsc{Clear-Elems}_1$}
-\TrinaryInfC{$\mathit{ctx},\, \mathsf{op}(\mathit{id}, \mathit{deps},
-    \mathsf{cursor}(\langle\rangle,\, k), \mathsf{clearElems}) \evalto
-    \mathit{ctx}'[\,\mathsf{deleted}(k) \,\mapsto\, \mathsf{true}\,]$}
-\end{prooftree}
-
-\begin{prooftree}
-\AxiomC{$k \not= \mathsf{tail} \,\wedge\, k \notin \mathit{deps}$}
-\AxiomC{$\mathit{ctx}(\mathsf{next}(k)) = \mathit{next}$}
-\AxiomC{$\mathit{ctx},\, \mathsf{op}(\mathit{id}, \mathit{deps},
-    \mathsf{cursor}(\langle\rangle,\, \mathit{next}), \mathsf{clearElems}) \evalto \mathit{ctx}'$}
-\LeftLabel{$\textsc{Clear-Elems}_2$}
-\TrinaryInfC{$\mathit{ctx},\, \mathsf{op}(\mathit{id}, \mathit{deps},
-    \mathsf{cursor}(\langle\rangle,\, k), \mathsf{clearElems}) \evalto \mathit{ctx}'$}
+\AxiomC{$\begin{matrix}
+    k \not= \mathsf{tail} \,\wedge\\
+    \mathit{ctx}(\mathsf{next}(k)) = \mathit{next} \end{matrix}$}
+\AxiomC{$\begin{matrix}
+    \mathit{ctx},\, \mathsf{clearElem}(\mathit{deps}, k) \\
+    \evalto \mathit{ctx}', \mathit{pres}_1 \end{matrix}$}
+\AxiomC{$\begin{matrix}
+    \mathit{ctx}',\, \mathsf{clearList}(\mathit{deps}, \mathit{next}) \\
+    \evalto \mathit{ctx}'', \mathit{pres}_2 \end{matrix}$}
+\LeftLabel{$\textsc{Clear-List}_2$}
+\TrinaryInfC{$\mathit{ctx},\, \mathsf{clearList}(\mathit{deps}, k) \evalto
+    \mathit{ctx}'',\, \mathit{pres}_1 \,\cup\, \mathit{pres}_2$}
 \end{prooftree}
 
 \begin{prooftree}
 \AxiomC{$k = \mathsf{tail}$}
-\LeftLabel{$\textsc{Clear-Elems}_3$}
-\UnaryInfC{$\mathit{ctx},\, \mathsf{op}(\mathit{id}, \mathit{deps},
-    \mathsf{cursor}(\langle\rangle,\, k), \mathsf{clearElems}) \evalto \mathit{ctx}$}
+\LeftLabel{$\textsc{Clear-List}_3$}
+\UnaryInfC{$\mathit{ctx},\, \mathsf{clearList}(\mathit{deps}, k) \evalto \mathit{ctx},\, \{\}$}
 \end{prooftree}
-\caption{Rules for evaluating operations and modifying document state}\label{fig:operation-rules}
+\caption{Rules for deleting and clearing state}\label{fig:clear-rules}
 \end{figure*}
 
-TODO known problems:
 
-\begin{enumerate}
-\item Distinction between \textsf{listDel} and \textsf{mapDel}
-\item Assignment of empty list and empty array is not defined (need to reset value, but preserve its existence and datatype) -- also needed for creating nested lists (2D arrays)
-\item \textsf{.next} should skip over tombstones
-\end{enumerate}
 
 \ifproofdraft
 
