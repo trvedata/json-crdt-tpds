@@ -9,6 +9,11 @@
 \usepackage{doi}
 \usepackage{hyperref}
 \usepackage[numbers,sort]{natbib}
+
+% Diagrams
+\usepackage{tikz}
+\usetikzlibrary{arrows}
+
 \hyphenation{da-ta-cen-ter da-ta-cen-ters time-stamp}
 \frenchspacing
 
@@ -28,6 +33,7 @@
   }%
 }
 
+% Span multiple columns within an alignat math environment
 \newcommand{\multialign}[2]{%
   \multispan{#1}\mbox{$\displaystyle{}#2$}%
 }
@@ -52,9 +58,9 @@ CRDTs~\cite{Shapiro:2011wy,Roh:2011dw}
 %
 % Look at KC's Quelea (also in DEBull March issue)
 
-\section{Operational Semantics}
+\section{Composing data structures}
 
-We go about defining the semantics for collaboratively editable data structures as follows. Firstly, we define a simple command language that is executed locally at any of the peers, and which allows the local state of that peer's copy of the document to be queried and modified. Performing read-only queries has no side-effects, but modifying the document has the effect of producing \emph{operations} describing the mutation. Those operations are applied to the local copy of the document, and also enqueued for broadcasting to other peers.
+In this section we outline our approach by example, and demonstrate some of the problems that occur when nested data structures are made collaboratively editable. In the following section we provide formal semantics of our collaboratively editable datatype and prove its correctness.
 
 \subsection{Data model}
 
@@ -68,6 +74,26 @@ Our data model for a document is based on JSON. It consists of a tree with the f
 
 Thus, in the tree of a JSON document, all the interior branch nodes are either maps or lists, and all the leaf nodes are registers. Maps and lists may be nested within each other arbitrarily. For simplicity we do not define a schema language or static type-checking rules, but such restrictions of the document structure could be added easily. Our approach also easily generalizes to other replicated datatypes such as counters or sets, which we do not spell out in detail in the interest of brevity.
 
+\subsection{Concurrent editing examples}
+
+\begin{figure}
+\centering
+\begin{tikzpicture}[auto]
+\node (start)  at (2,4) {\verb|{"key":"A"}|};
+\node (left1)  at (0,1.5) {\verb|{"key":"B"}|};
+\node (right1) at (4,1.5) {\verb|{"key":"C"}|};
+\node (left2)  at (0,0) {\verb|{"key":{"B","C"}}|};
+\node (right2) at (4,0) {\verb|{"key":{"B","C"}}|};
+\draw [->] (start) to node [above,sloped] {\footnotesize $\text{doc}[\text{``key''}] := \text{``B'';}$} (left1);
+\draw [->] (start) to node [above,sloped] {\footnotesize $\text{doc}[\text{``key''}] := \text{``C'';}$} (right1);
+\draw [->] (left1) to node [left] {\footnotesize yield;} (left2);
+\draw [->] (left1) to (right2);
+\draw [->] (right1) to (left2);
+\draw [->] (right1) to node [right] {\footnotesize yield;} (right2);
+\end{tikzpicture}
+\caption{Concurrent assignment to a register}\label{fig:register-assign}
+\end{figure}
+
 \begin{figure}
 \centering
 \begin{tabular}{rcll}
@@ -79,7 +105,7 @@ CMD & ::= & \textsf{let} $x$ = EXPR & $x \in \mathrm{VAR}$ \\
 & $|$ & CMD; CMD \vspace{0.5em}\\
 EXPR & ::= & \textsf{doc} \\
 & $|$ & $x$ & $x \in \mathrm{VAR}$ \\
-& $|$ & EXPR[\verb|"key"|] & $\mathtt{key} \in \mathrm{String}$ \\
+& $|$ & EXPR\verb|["key"]| & $\mathtt{key} \in \mathrm{String}$ \\
 & $|$ & EXPR.\textsf{iter} \\
 & $|$ & EXPR.\textsf{next} \\
 & $|$ & EXPR.\textsf{keys} \\
@@ -112,7 +138,9 @@ eggs.next.values // evaluates to {"milk"}
 \caption{Example of programmatically constructing a JSON document}\label{fig:make-doc}
 \end{figure}
 
-\subsection{Command language introduction}
+\subsection{Document editing API}
+
+To define the semantics for collaboratively editable data structures, we first define a simple command language that is executed locally at any of the peers, and which allows that peer's local copy of the document to be queried and modified. Performing read-only queries has no side-effects, but modifying the document has the effect of producing \emph{operations} describing the mutation. Those operations are applied to the local copy of the document, and also enqueued for broadcasting to other peers.
 
 The syntax of the command language is given in Figure~\ref{fig:local-syntax}. It is not a full programming language, but rather an API through which the document state is queried and modified. We assume that the program accepts user input and issues a (possibly infinite) sequence of commands to the API. We model only the semantics of those commands, and do not assume anything about the program in which the command language is embedded. The API differs slightly from the JSON libraries found in many programming languages, in order to allow us to define consistent merge semantics.
 
@@ -126,7 +154,7 @@ Figure~\ref{fig:make-doc} shows an example sequence of commands that constructs 
 
 A few features of this language deliberately differ from most mainstream programming languages: keys in maps are implicitly created when they are first accessed, so there is no need for a command to put a new key-value pair into a map; lists can only be navigated by iteration (\textsf{next}) but not by index; and the language has literals for creating empty maps and lists, but not for non-empty collections. As we shall see later, these features are helpful for achieving desirable semantics in the presence of concurrent modifications.
 
-\subsection{Local expression evaluation}
+\section{Formal semantics}
 
 \begin{figure}
 \centering \begin{alignat*}{3}
@@ -281,6 +309,8 @@ A few features of this language deliberately differ from most mainstream program
 The state of peer $p$ is described by $A_p$, a finite partial function. The semantics of the command language are defined by rules that inspect and modify this local state $A_p$, and which are independent of the state $A_{p'}$ of any other peer $p'$. The only communication between peers occurs in the evaluation of the \textsf{yield} command, which we discuss later. For now, we concentrate on the execution of commands at a single peer $p$.
 
 An illustrative example of the peer state $A_p$ is given in Figure~\ref{fig:state-example}, which corresponds to the shopping list example of Figure~\ref{fig:make-doc}. For each local variable defined with a \textsf{let} command, $A_p$ maps the variable name to a cursor. In addition, $A_p$ maps \textsf{mapT(doc)} to a nested partial function representing the contents of the document. \textsf{mapT} denotes that the document \textsf{doc} is of type map. The only map entry is the key ``shopping'' of type \textsf{listT}. The list is represented in a manner resembling a linked list, with each list element assigned a unique identifier ($\mathit{id}_1, \mathit{id}_2, \mathit{id}_3$), and special \textsf{head} and \textsf{tail} atoms denoting the beginning and end of the list, respectively.
+
+\subsection{Expression evaluation}
 
 Figure~\ref{fig:expr-rules} gives the rules for evaluating EXPR expressions in the command language, which are evaluated in the context of the local peer state $A_p$. The \textsc{Exec} rule formalizes the assumption that commands are executed sequentially. The \textsc{Let} rule allows the program to define a local variable, which is added to the local state, and the corresponding \textsc{Var} rule allows the program to retrieve the value of a previously defined variable.
 
