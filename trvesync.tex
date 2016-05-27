@@ -104,7 +104,7 @@ Thus, in the tree of a JSON document, all the interior branch nodes are either m
 
 In this section we will examine some examples of concurrent edits that may occur in a JSON document, in order to illustrate some of the subtleties that arise.
 
-Our first example is shown in Figure~\ref{fig:register-assign}. In a document that maps ``key'' to a register with value ``A'', one replica sets the value of the register to ``B'', while another concurrently sets it to ``C''. As the replicas subsequently exchange edits, they detect the conflict. Since we do not want to simply discard one of the edits, and the strings ``B'' and ``C'' cannot meaningfully be merged, the system must preserve both concurrent updates. This datatype is known as a \emph{multi-value register}: although a replica can only assign a single value to the register, reading the register may return a set of concurrently written values.
+Our first example is shown in Figure~\ref{fig:register-assign}. In a document that maps ``key'' to a register with value ``A'', one replica sets the value of the register to ``B'', while another concurrently sets it to ``C''. As the replicas subsequently exchange edits, they detect the conflict. Since we do not want to simply discard one of the edits, and the strings ``B'' and ``C'' cannot meaningfully be merged, the system must preserve both concurrent updates. This datatype is known as a \emph{multi-value register}: although a replica can only assign a single value to the register, reading the register may return a set of multiple values that were concurrently written.
 
 \begin{figure*}
 \centering
@@ -124,18 +124,68 @@ Our first example is shown in Figure~\ref{fig:register-assign}. In a document th
     \node {\verb|{"colors": {"red": "#ff0000",|}; \\
     \node {\verb|"green": "#00ff00"}}|}; \\
 };
-\draw [thick,->] (start) to node [left,inner sep=12pt] {\footnotesize doc[``colors''][``red''] := ``\#ff0000'';} (left1);
-\draw [thick,->] (start) to node [right,inner sep=18pt] {\footnotesize doc[``colors''] = \{\};} (right1);
+\draw [thick,->] (start)  to node [left, inner xsep=12pt] {\footnotesize doc[``colors''][``red''] := ``\#ff0000'';} (left1);
+\draw [thick,->] (start)  to node [right,inner xsep=18pt] {\footnotesize doc[``colors''] = \{\};} (right1);
 \draw [thick,->] (right1) to node [right] {\footnotesize doc[``colors''][``green''] := ``\#00ff00'';} (right2);
-\draw [thick,->] (left1) to node [left] {\footnotesize yield;} (left2);
+\draw [thick,->] (left1)  to node [left]  {\footnotesize yield;} (left2);
 \draw [thick,->] (right2) to node [right] {\footnotesize yield;} (right3);
-\draw [thick,->] (left1) to (right3);
+\draw [thick,->] (left1)  to (right3);
 \draw [thick,->] (right2) to (left2);
 \end{tikzpicture}
 \caption{Modifying the contents of a nested map while concurrently the entire map is overwritten}\label{fig:map-remove}
 \end{figure*}
 
 Another example is given in Figure~\ref{fig:map-remove}. Here, one replica adds ``red'' to a map of colors, while concurrently another client first blanks out the entire map of colors, and then adds ``green''. As the replicas merge their edits, all changes must be preserved: ``blue'' must be absent from the final map, since it was removed by blanking out the map, while ``red'' and ``green'' must be present, since they were explicitly added.
+
+\begin{figure*}
+\centering
+\begin{tikzpicture}[auto]
+\node (start)  at (4,6.0) {\verb|{}|};
+\node (left1)  at (0,4.5) {\verb|{"buy":[]}|};
+\node (right1) at (8,4.5) {\verb|{"buy":[]}|};
+\node (left2)  at (0,3.0) {\verb|{"buy":["eggs"]}|};
+\node (left3)  at (0,1.5) {\verb|{"buy":["eggs","ham"]}|};
+\node (right2) at (8,3.0) {\verb|{"buy":["milk"]}|};
+\node (right3) at (8,1.5) {\verb|{"buy":["milk","flour"]}|};
+\node (left4)  at (0,0.0) {\verb|{"buy":["eggs","ham","milk","flour"]}|};
+\node (right4) at (8,0.0) {\verb|{"buy":["eggs","ham","milk","flour"]}|};
+\draw [thick,->] (start)  to node [left, inner xsep=18pt] {\footnotesize doc[``buy''] := [];} (left1);
+\draw [thick,->] (start)  to node [right,inner xsep=18pt] {\footnotesize doc[``buy''] := [];} (right1);
+\draw [thick,->] (left1)  to node [left]  {\footnotesize doc[``buy''].iter.insert(``eggs'');} (left2);
+\draw [thick,->] (right1) to node [right] {\footnotesize doc[``buy''].iter.insert(``milk'');} (right2);
+\draw [thick,->] (left2)  to node [left]  {\footnotesize eggs.insert(``ham'');} (left3);
+\draw [thick,->] (right2) to node [right] {\footnotesize milk.insert(``flour'');} (right3);
+\draw [thick,->] (left3)  to node [left]  {\footnotesize yield;} (left4);
+\draw [thick,->] (right3) to node [right] {\footnotesize yield;} (right4);
+\draw [thick,->] (left3)  to (right4);
+\draw [thick,->] (right3) to (left4);
+\end{tikzpicture}
+\caption{Two replicas concurrently create ordered lists under the same map key}\label{fig:two-lists}
+\end{figure*}
+
+The example in Figure~\ref{fig:two-lists} shows two replicas concurrently creating a new shopping list under the same map key ``buy'', and adding items to the list. When the replicas are merged, the lists need to be merged also. We preserve the ordering and adjacency of items inserted at each replica, so ``ham'' appears after ``eggs'', and ``flour'' appears after ``milk'' in the merged result. There is no information on which replica's items should appear first in the merged result, so the algorithm can make an arbitrary choice between ``eggs, ham, milk, flour'' and ``milk, flour, eggs, ham'', provided that all replicas end up with the same order.
+
+\begin{figure*}
+\centering
+\begin{tikzpicture}[auto]
+\node (start)  at (4,3.0) {\verb|{"todo": [{"title": "buy milk", "done": false}]}|};
+\node (left1)  at (0,1.5) {\verb|{"todo": []}|};
+\node (right1) at (8,1.5) {\verb|{"todo": [{"title": "buy milk", "done": true}]}|};
+\node (left2)  at (0,0.0) {\verb|{"todo": [{"done": true}]}|};
+\node (right2) at (8,0.0) {\verb|{"todo": [{"done": true}]}|};
+\draw [thick,->] (start)  to node [left, inner xsep=12pt] {\footnotesize doc[``todo''].iter.next.delete;} (left1);
+\draw [thick,->] (start)  to node [right,inner xsep=12pt] {\footnotesize doc[``todo''].iter.next[``done''] := true;} (right1);
+\draw [thick,->] (left1)  to node [left]  {\footnotesize yield;} (left2);
+\draw [thick,->] (right1) to node [right] {\footnotesize yield;} (right2);
+\draw [thick,->] (left1)  to (right2);
+\draw [thick,->] (right1) to (left2);
+\end{tikzpicture}
+\caption{One replica removes a list element, while another concurrently updates its contents}\label{fig:todo-item}
+\end{figure*}
+
+Our final example in Figure~\ref{fig:todo-item} shows a limitation of the principle of preserving all user input. In a to-do list application, one replica removes a to-do item from the list, while another replica concurrently marks the same item as done. As the changes are merged, the update of the map key ``done'' effectively causes the list item to be resurrected on the left replica, leading to a to-do item without a title (since the title was deleted as part of deleting the list item). This behavior is consistent with the example in Figure~\ref{fig:map-remove}, but it is perhaps surprising to users. In this example it may be more desirable to discard one of the concurrent updates, and thus preserve the implicit schema that a to-do item has both a ``title'' and a ``done'' field.
+
+The algorithm in this paper preserves all user input, and so it exhibits the behavior shown in Figure~\ref{fig:todo-item}. Further study will be required to determine to what degree this behavior matches the expectations of application developers and users.
 
 \begin{figure}
 \centering
