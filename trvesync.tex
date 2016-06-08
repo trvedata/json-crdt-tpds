@@ -104,7 +104,7 @@ Thus, in the tree of a JSON document, all the interior branch nodes are either m
 
 In this section we will examine some examples of concurrent edits that may occur in a JSON document, in order to illustrate some of the subtleties that arise.
 
-Our first example is shown in Figure~\ref{fig:register-assign}. In a document that maps ``key'' to a register with value ``A'', one replica sets the value of the register to ``B'', while another concurrently sets it to ``C''. As the replicas subsequently exchange edits, they detect the conflict. Since we do not want to simply discard one of the edits, and the strings ``B'' and ``C'' cannot meaningfully be merged, the system must preserve both concurrent updates. This datatype is known as a \emph{multi-value register}: although a replica can only assign a single value to the register, reading the register may return a set of multiple values that were concurrently written.
+Our first example is shown in Figure~\ref{fig:register-assign}. In a document that maps ``key'' to a register with value ``A'', one replica sets the value of the register to ``B'', while another concurrently sets it to ``C''. As the replicas subsequently exchange edits, they detect the conflict. Since we do not want to simply discard one of the edits, and the strings ``B'' and ``C'' cannot meaningfully be merged, the system must preserve both concurrent updates. This datatype is known as a \emph{multi-value register}: although a replica can only assign a single value to the register, reading the register may return a set of multiple values that were concurrently written. An implementation may keep metadata about the provenance of each value (who made the change, on which device, at what time) to assist users with manually resolving the conflict.
 
 \begin{figure*}
 \centering
@@ -187,6 +187,16 @@ Our final example in Figure~\ref{fig:todo-item} shows a limitation of the princi
 
 The algorithm in this paper preserves all user input, and so it exhibits the behavior shown in Figure~\ref{fig:todo-item}. Further study will be required to determine to what degree this behavior matches the expectations of application developers and users.
 
+\subsection{JSON versus XML}
+
+The most common alternative to JSON is XML, and collaborative editing of XML documents has been previously studied (Ignat and Norrie, 2003). Besides the superficial syntactical differences, the tree structure of XML and JSON appears quite similar. However, there is an important difference that we should highlight.
+
+JSON has two collection constructs that can be arbitrarily nested: maps for unordered key-value pairs, and lists for ordered sequences. In XML, the children of an element form an ordered sequence, while the attributes of an element are unordered key-value pairs. However, XML does not allow nested elements inside attributes -- the value of an attribute can only be a primitive datatype. Thus, XML supports maps within lists, but not lists within maps. In this regard, XML is less expressive than JSON: the example in Figure~\ref{fig:two-lists} cannot occur in XML.
+
+Some applications may attach map-like semantics to the children of an XML document, for example by interpreting the child element name as key. However, these semantics are not part of XML itself and would not be enforced by existing collaborative editing algorithms for XML. If multiple children with the same key are concurrently created, existing algorithms would create duplicate children with the same key rather than merging them like in Figure~\ref{fig:two-lists}.
+
+\subsection{Document editing API}
+
 \begin{figure}
 \centering
 \begin{tabular}{rcll}
@@ -230,8 +240,6 @@ eggs.next.values // evaluates to {"milk"}
 \end{verbatim}
 \caption{Example of programmatically constructing a JSON document}\label{fig:make-doc}
 \end{figure}
-
-\subsection{Document editing API}
 
 To define the semantics for collaboratively editable data structures, we first define a simple command language that is executed locally at any of the peers, and which allows that peer's local copy of the document to be queried and modified. Performing read-only queries has no side-effects, but modifying the document has the effect of producing \emph{operations} describing the mutation. Those operations are applied to the local copy of the document, and also enqueued for broadcasting to other peers.
 
@@ -452,7 +460,7 @@ An operation is a tuple of the form
 \end{alignat*}
 where $\mathit{id}$ is the Lamport timestamp that uniquely identifies the operation, $\mathit{cur}$ is the cursor describing the position in the document being modified, and $\mathit{mut}$ is the mutation that was requested at the specified position.
 
-$\mathit{deps}$ is the set of causal dependencies of the operation, given as a set of Lamport timestamps. The semantics below defines $\mathit{deps}$ to be the set of all operation IDs that had been applied to the document at the time when the operation was generated. In a real implementation, this set would become impracticably large, so a compact representation of causal history would be used instead -- for example, version vectors or dotted version vectors (TODO citations). However, to avoid ambiguity in our semantics we give the dependencies as a simple set of operation IDs.
+$\mathit{deps}$ is the set of causal dependencies of the operation, given as a set of Lamport timestamps. The semantics below defines $\mathit{deps}$ to be the set of all operation IDs that had been applied to the document at the time when the operation was generated. In a real implementation, this set would become impracticably large, so a compact representation of causal history would be used instead -- for example, version vectors~\cite{ParkerJr:1983jb}, state vectors~\cite{Ellis:1989ue}, or dotted version vectors~\cite{Preguica:2012fx}. However, to avoid ambiguity in our semantics we give the dependencies as a simple set of operation IDs.
 
 The purpose of the causal dependencies $\mathit{deps}$ is to impose a partial ordering on operations: an operation can only be applied after all operations that ``happened before'' it have been applied. In particular, this means that the sequence of operations generated at one particular peer will be applied in the same order at every other peer. Operations that are concurrent, i.e. where there is no causal dependency, can be applied in any order.
 
@@ -890,6 +898,18 @@ If the reference element appears before $o_{n+1}$ in the final order, that means
 TODO that last bit of the argument is a bit hand-wavy, need to make it more precise. But I think the general approach is ok. That completes the induction step, and thus the proof.
 
 \fi % proofdraft
+
+\section{Related work}
+
+\subsection{Operational transformation}
+
+Algorithms based on \emph{operational transformation} (OT) have long been used for collaborative editing applications~\cite{Ellis:1989ue,Ressel:1996wx,Sun:1998vf,Nichols:1995fd}. Most of them treat a document as a single ordered list (of characters, for example) and do not support the nested tree structures that are required for many applications. Some algorithms generalize OT to editing XML documents~\cite{Davis:2002iv,Ignat:2003jy,Wang:2015vo}, which provides nesting of ordered lists, but these algorithms do not support key-value maps as defined in this paper.
+
+Most deployed OT collaboration systems, including Google Docs~\cite{DayRichter:2010tt}, Etherpad~\cite{Etherpad:2011um}, Novell Vibe~\cite{Spiewak:2010vw} and Apache Wave (formerly Google Wave~\cite{Wang:2015vo}), rely on a single server to decide on a total ordering of operations, a design decision inherited from the Jupiter system~\cite{Nichols:1995fd}. This approach has the advantage of making the transformation functions simpler and less error-prone~\cite{Imine:2003ks}, but it does not meet our requirements, since we want to support peer-to-peer collaboration without requiring a single server.
+
+Many secure messaging protocols, which we plan to use for encrypted collaboration, do not guarantee that different recipients will see messages in the same order~\cite{Unger:2015kg}. Although it is possible to decide on a total ordering of operations by using an atomic broadcast protocol~\cite{Defago:2004ji}, which avoids relying on a single server, such protocols are equivalent to consensus~\cite{Chandra:1996cp}, so they can only safely make progress if a majority of participants are online and reachable. We expect that in peer-to-peer systems of mobile devices it will frequently be the case that only a minority of participants are online at the same time, and so any algorithm requiring atomic broadcast would become unavailable. The strongest guararantee such a system can give is causal ordering~\cite{Attiya:2015dm}, and for the CRDT family of data structures, causal ordering is sufficient to achieve convergence.
+
+\subsection{CRDTs}
 
 {\footnotesize
 \bibliographystyle{plainnat}
