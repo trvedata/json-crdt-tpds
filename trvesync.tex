@@ -1,21 +1,18 @@
-\documentclass[a4paper,twocolumn,10pt]{article}
+\documentclass[10pt,journal,compsoc]{IEEEtran}
 \usepackage[utf8]{inputenc}
 \usepackage{amsmath} % align environment
 \usepackage{amssymb} % mathbb
-\usepackage{mathptmx} % times roman, including math
 \usepackage{bussproofs} % notation for inference rules
 \usepackage{rotating} % sidewaysfigure
 \usepackage[hyphens]{url}
-\usepackage{doi}
 \usepackage{hyperref}
-\usepackage[numbers,sort]{natbib}
+\usepackage[nocompress]{cite}
 
 % Diagrams
 \usepackage{tikz}
 \usetikzlibrary{arrows}
 
-\hyphenation{da-ta-cen-ter da-ta-cen-ters time-stamp}
-\frenchspacing
+\hyphenation{da-ta-cen-ter da-ta-cen-ters net-works time-stamp}
 
 \newif\ifproofdraft
 \proofdraftfalse
@@ -41,14 +38,22 @@
 \begin{document}
 \sloppy
 \title{A Conflict-Free Replicated JSON Datatype}
-\author{}
+\author{Author 1 and Author 2
+\thanks{Author affiliation goes here.}}
+
+\IEEEtitleabstractindextext{%
+\begin{abstract}
+TODO
+\end{abstract}
+
+\begin{IEEEkeywords}
+CRDTs, Collaborative Editing, P2P, JSON, Optimistic Replication, Semantics, Eventual Consistency.
+\end{IEEEkeywords}}
 \maketitle
 
-\subsection*{Abstract}
+\IEEEraisesectionheading{\section{Introduction}\label{sec:introduction}}
 
-\section{Introduction}
-
-CRDTs~\cite{Shapiro:2011wy,Roh:2011dw}
+\IEEEPARstart{T}{this} is where the introduction should go (TODO). Lorem ipsum dolor sit amet, consectetur adipiscing elit. Suspendisse mattis leo cursus tortor mattis tincidunt. Donec sed bibendum purus, vel blandit erat.
 
 % TODO papers on formal verification of CRDTs or similar:
 % Gotsman et al, "cause I'm strong enough", POPL 2016
@@ -189,11 +194,13 @@ The algorithm in this paper preserves all user input, and so it exhibits the beh
 
 \subsection{JSON versus XML}
 
-The most common alternative to JSON is XML, and collaborative editing of XML documents has been previously studied (Ignat and Norrie, 2003). Besides the superficial syntactical differences, the tree structure of XML and JSON appears quite similar. However, there is an important difference that we should highlight.
+The most common alternative to JSON is XML, and collaborative editing of XML documents has been previously studied~\cite{Davis:2002iv,Ignat:2003jy,Wang:2015vo}. Besides the superficial syntactical differences, the tree structure of XML and JSON appears quite similar. However, there is an important difference that we should highlight.
 
 JSON has two collection constructs that can be arbitrarily nested: maps for unordered key-value pairs, and lists for ordered sequences. In XML, the children of an element form an ordered sequence, while the attributes of an element are unordered key-value pairs. However, XML does not allow nested elements inside attributes -- the value of an attribute can only be a primitive datatype. Thus, XML supports maps within lists, but not lists within maps. In this regard, XML is less expressive than JSON: the example in Figure~\ref{fig:two-lists} cannot occur in XML.
 
 Some applications may attach map-like semantics to the children of an XML document, for example by interpreting the child element name as key. However, these semantics are not part of XML itself and would not be enforced by existing collaborative editing algorithms for XML. If multiple children with the same key are concurrently created, existing algorithms would create duplicate children with the same key rather than merging them like in Figure~\ref{fig:two-lists}.
+
+We discuss existing algorithms for collaborative editing in section~\ref{sec:related-ot}.
 
 \subsection{Document editing API}
 
@@ -929,7 +936,6 @@ Another frequently-used approach to conflict resolution is \emph{last writer win
 
 Finally, systems such as Bayou~\cite{Terry:1995dn} allow offline nodes to execute transactions tentatively, and confirm them when they are next online. This approach relies on all servers executing transactions in the same serial order, and deciding whether a transaction was successful depending on its preconditions. As discussed in section~\ref{sec:related-ot}, such serial ordering requirements are prohibitive in a peer-to-peer system of mobile devices.
 
-{\footnotesize
-\bibliographystyle{plainnat}
-\bibliography{references}{}}
+\bibliographystyle{IEEEtran}
+\bibliography{references}{}
 \end{document}
