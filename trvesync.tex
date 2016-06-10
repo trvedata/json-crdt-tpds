@@ -913,9 +913,13 @@ The Google Realtime API~\cite{Google:2015vk} is the only implementation of OT of
 
 \subsection{CRDTs}\label{sec:related-crdts}
 
-CRDTs for registers, counters, maps and sets are widely known~\cite{Shapiro:2011un,Shapiro:2011wy}, and have been implemented in various deployed systems such as Riak~\cite{Brown:2014hs}. For ordered lists, various algorithms have been proposed, including WOOT~\cite{Oster:2006wj}, RGA~\cite{Roh:2011dw}, Treedoc~\cite{Preguica:2009fz}, Logoot~\cite{Weiss:2010hx} and LSEQ~\cite{Nedelec:2013ky}. However, none of them support nesting: they assume that the elements of the CRDT map or list are atomic values, not another CRDT.
+CRDTs for registers, counters, maps and sets are widely known~\cite{Shapiro:2011un,Shapiro:2011wy}, and have been implemented in various deployed systems such as Riak~\cite{Brown:2014hs,Brown:2013wy}. For ordered lists, various algorithms have been proposed, including WOOT~\cite{Oster:2006wj}, RGA~\cite{Roh:2011dw}, Treedoc~\cite{Preguica:2009fz}, Logoot~\cite{Weiss:2010hx} and LSEQ~\cite{Nedelec:2013ky}. However, none of them support nesting: they assume that the elements of the CRDT map or list are atomic values, not another CRDT.
 
-The problem of nesting one CRDT inside another (also known as \emph{embedding}) has only been studied more recently.
+The problem of nesting one CRDT inside another (also known as \emph{composition} or \emph{embedding}) has only been studied more recently. Riak allows nesting of counters and registers inside maps, and of maps within other maps~\cite{Brown:2014hs,Brown:2013wy}. Embedding counters inside maps raises questions of semantics, which have been studied by Baquero, Almeida and Lerche~\cite{Baquero:2016iv}. Almeida et al.~\cite{Almeida:2016tk} also define delta mutations for nested maps, and Baquero et al.~\cite{Baquero:2015tm} define a theoretical framework for composition of state-based CRDTs, based on lattices. None of this work integrates CRDTs for ordered lists, but the treatment of causality in these datatypes forms a basis for the semantics developed in this paper.
+
+Burckhardt et al.~\cite{Burckhardt:2012jy} define \emph{cloud types}, which are similar to CRDTs and can be composed. They define \emph{cloud arrays}, which behave similarly to our map datatype, and \emph{entities}, which are like unordered sets or relations; ordered lists are not defined in this framework. Our \textsf{yield} statement is inspired by Burckhardt et al.
+
+Although CRDTs for registers, maps and ordered lists have existed for years in isolation, we are not aware of any prior work that allows them all to be composed into an arbitrarily nested CRDT with a JSON-like structure.
 
 \subsection{Other approaches}\label{sec:related-other}
 
