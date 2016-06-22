@@ -36,7 +36,7 @@ datatype state_key =
 datatype doc_state =
   Prim primitive
 | IdRef id
-| Ctx "(state_key * id set * doc_state) list"
+| Ctx "(state_key * (nat * nat) set * doc_state) list"
 
 datatype cursor = Cursor "state_key list" id
 
@@ -73,7 +73,7 @@ fun get_id :: "state_key \<Rightarrow> id" where
 | "get_id (ListT x) = x"
 | "get_id (RegT  x) = x"
 
-fun first_present :: "(state_key * id set * doc_state) list \<Rightarrow> id option" where
+fun first_present :: "(state_key * (nat * nat) set * doc_state) list \<Rightarrow> id option" where
   "first_present ((key, pres, _) # rest) = (
     if pres = {}
     then first_present rest
@@ -100,7 +100,7 @@ fun get_next :: "doc_state \<Rightarrow> cursor \<Rightarrow> cursor option" whe
       | None \<Rightarrow> None
     )
   )" |
-"get_next _ _ = None"
+  "get_next _ _ = None"
 
 fun eval_cur :: "state \<Rightarrow> expr \<Rightarrow> cursor option" where
   "eval_cur state Doc = Some (Cursor [] Root)"
@@ -160,14 +160,41 @@ by (rule expr_iter, rule expr_doc)
 
 value "let_var empty_state ''hi'' (Cursor [] Root)"
 
+fun update_ctx :: "doc_state \<Rightarrow> state_key list \<Rightarrow> operation \<Rightarrow> doc_state" where
+  "update_ctx (Ctx ((key, pres, child) # rest)) (k#ks) operation = (
+    if key = k
+    then (
+      let child1 = update_ctx child ks operation;
+          pres1 = insert (op_id operation) pres
+      in  Ctx ((key, pres1, child1) # rest)
+    ) else (
+      case update_ctx (Ctx rest) (k#ks) operation of
+        Ctx rest1 \<Rightarrow> Ctx ((key, pres, child) # rest1)
+      | _         \<Rightarrow> Ctx ((key, pres, child) # rest)
+    )
+  )"
+| "update_ctx (Ctx []) (k#ks) operation = (
+    let child1 = update_ctx (Ctx []) ks operation
+    in  Ctx [(k, {op_id operation}, child1)]
+  )"
+| "update_ctx ctx _ _ = ctx"
+
+definition apply_op :: "doc_state \<Rightarrow> operation \<Rightarrow> doc_state" where
+  "apply_op ctx operation = (
+    case op_cursor operation of
+      Cursor keys final \<Rightarrow> update_ctx ctx keys operation
+  )"
+
 definition make_op :: "state \<Rightarrow> cursor \<Rightarrow> mutation \<Rightarrow> state" where
   "make_op state cursor mutation = (
     let ctr = Max ((\<lambda>(c,p). c) ` (op_ids state));
         opn = \<lparr>op_id     = (ctr + 1, (peer_id state)),
                op_deps   = (op_ids state),
                op_cursor = cursor,
-               op_mut    = mutation\<rparr>
-    in  state \<lparr>op_ids := insert (op_id opn) (op_ids state),
+               op_mut    = mutation\<rparr>;
+        doc = apply_op (doc state) opn
+    in  state \<lparr>doc    := doc,
+               op_ids := insert (op_id opn) (op_ids state),
                queue  := insert opn (queue state)\<rparr>
   )"
 
