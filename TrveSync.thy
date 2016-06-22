@@ -2,12 +2,25 @@ theory TrveSync
 imports Main
 begin
 
+datatype primitive =
+  Null
+| Str string
+| Int int
+| Bool bool
+
 datatype expr =
   Doc
 | Var string
 | Get expr string
 | Iter expr
 | Next expr
+
+datatype cmd =
+  LetCmd string expr
+| AssignCmd expr primitive
+| InsertCmd expr primitive
+| DeleteCmd expr
+| YieldCmd
 
 datatype id =
   Root
@@ -20,12 +33,6 @@ datatype state_key =
 | ListT id
 | RegT  id
 
-datatype primitive =
-  Null
-| Str string
-| Int int
-| Bool bool
-
 datatype doc_state =
   Prim primitive
 | IdRef id
@@ -33,10 +40,25 @@ datatype doc_state =
 
 datatype cursor = Cursor "state_key list" id
 
-record state =
-  doc :: doc_state
-  vars :: "string \<Rightarrow> cursor option"
+datatype mutation =
+  AssignOp primitive
+| InsertOp primitive
+| DeleteOp
 
+record operation =
+  op_id     :: "nat * nat"
+  op_deps   :: "(nat * nat) set"
+  op_cursor :: cursor
+  op_mut    :: mutation
+
+record state =
+  peer_id  :: nat
+  doc      :: doc_state
+  vars     :: "string \<Rightarrow> cursor option"
+  op_ids   :: "(nat * nat) set"
+  queue    :: "operation set"
+  send_buf :: "operation set"
+  recv_buf :: "operation set"
 
 fun defined_var :: "string \<Rightarrow> state \<Rightarrow> bool" where
   "defined_var x state =
@@ -113,8 +135,16 @@ expr_get:  "valid_expr state expr \<Longrightarrow> valid_expr state (Get expr k
 expr_iter: "valid_expr state expr \<Longrightarrow> valid_expr state (Iter expr)" |
 expr_next: "valid_expr state expr \<Longrightarrow> valid_next state expr \<Longrightarrow> valid_expr state (Next expr)"
 
-definition empty_state :: state
-where "empty_state = \<lparr>doc = Ctx [], vars = Map.empty\<rparr>"
+definition empty_state :: state where
+  "empty_state = \<lparr>
+    peer_id  = 1,
+    doc      = Ctx [],
+    vars     = Map.empty,
+    op_ids   = {},
+    queue    = {},
+    send_buf = {},
+    recv_buf = {}
+  \<rparr>"
 
 lemma "valid_expr empty_state Doc"
 by (rule expr_doc)
@@ -127,5 +157,41 @@ by (rule expr_get, rule expr_doc)
 
 lemma "valid_expr empty_state (Iter Doc)"
 by (rule expr_iter, rule expr_doc)
+
+value "let_var empty_state ''hi'' (Cursor [] Root)"
+
+definition make_op :: "state \<Rightarrow> cursor \<Rightarrow> mutation \<Rightarrow> state" where
+  "make_op state cursor mutation = (
+    let ctr = Max ((\<lambda>(c,p). c) ` (op_ids state));
+        opn = \<lparr>op_id     = (ctr + 1, (peer_id state)),
+               op_deps   = (op_ids state),
+               op_cursor = cursor,
+               op_mut    = mutation\<rparr>
+    in  state \<lparr>op_ids := insert (op_id opn) (op_ids state),
+               queue  := insert opn (queue state)\<rparr>
+  )"
+
+fun eval_cmd :: "state \<Rightarrow> cmd \<Rightarrow> state list" where
+  "eval_cmd state (LetCmd var expr) = (
+    case eval_cur state expr of
+      Some cursor \<Rightarrow> [let_var state var cursor]
+    | None \<Rightarrow> []
+  )"
+| "eval_cmd state (AssignCmd expr val) = (
+    case eval_cur state expr of
+      Some cursor \<Rightarrow> [make_op state cursor (AssignOp val)]
+    | None \<Rightarrow> []
+  )"
+| "eval_cmd state (InsertCmd expr val) = (
+    case eval_cur state expr of
+      Some cursor \<Rightarrow> [make_op state cursor (InsertOp val)]
+    | None \<Rightarrow> []
+  )"
+| "eval_cmd state (DeleteCmd expr) = (
+    case eval_cur state expr of
+      Some cursor \<Rightarrow> [make_op state cursor DeleteOp]
+    | None \<Rightarrow> []
+  )"
+| "eval_cmd state YieldCmd = [state]" (* TODO yield *)
 
 end
