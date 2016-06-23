@@ -36,7 +36,8 @@ datatype state_key =
 datatype doc_state =
   Prim primitive
 | IdRef id
-| Ctx "(state_key * (nat * nat) set * doc_state) list"
+| MapV "state_key \<Rightarrow> ((nat * nat) set * doc_state) option"
+| ListV "(state_key * (nat * nat) set * doc_state) list"
 
 datatype cursor = Cursor "state_key list" id
 
@@ -81,26 +82,40 @@ fun first_present :: "(state_key * (nat * nat) set * doc_state) list \<Rightarro
   )"
 | "first_present [] = None"
 
-fun get_next :: "doc_state \<Rightarrow> cursor \<Rightarrow> cursor option" where
-  "get_next (Ctx ((key, pres, child) # rest)) (Cursor [] prev_id) = (
+function (sequential) get_next :: "doc_state \<Rightarrow> cursor \<Rightarrow> cursor option" where
+  "get_next (ListV ((key, pres, child) # rest)) (Cursor [] prev_id) = (
     if (get_id key) \<noteq> prev_id
-    then get_next (Ctx rest) (Cursor [] prev_id)
+    then get_next (ListV rest) (Cursor [] prev_id)
     else (
       case first_present rest of
         Some next_id \<Rightarrow> Some (Cursor [] next_id)
       | None \<Rightarrow> None
     )
   )"
-| "get_next (Ctx ((key, pres, child) # rest)) (Cursor (k#ks) kn) = (
+| "get_next (ListV ((key, pres, child) # rest)) (Cursor (k#ks) kn) = (
     if key \<noteq> k
-    then get_next (Ctx rest) (Cursor (k#ks) kn)
+    then get_next (ListV rest) (Cursor (k#ks) kn)
     else (
       case get_next child (Cursor ks kn) of
         Some (Cursor ks1 kn1) \<Rightarrow> Some (Cursor (k#ks1) kn1)
       | None \<Rightarrow> None
     )
-  )" |
-  "get_next _ _ = None"
+  )"
+| "get_next (MapV map_val) (Cursor (k#ks) kn) = (
+    case map_val k of
+      Some (pres, child) \<Rightarrow> (
+        case get_next child (Cursor ks kn) of
+          Some (Cursor ks1 kn1) \<Rightarrow> Some (Cursor (k#ks1) kn1)
+        | None \<Rightarrow> None
+      )
+    | None \<Rightarrow> None
+  )"
+| "get_next _ _ = None"
+by pat_completeness auto
+termination by (relation "measures [
+  \<lambda>(doc, cur). (case cur of Cursor ks kn \<Rightarrow> size ks),
+  \<lambda>(doc, cur). size doc
+]") auto
 
 fun eval_cur :: "state \<Rightarrow> expr \<Rightarrow> cursor option" where
   "eval_cur state Doc = Some (Cursor [] Root)"
@@ -138,7 +153,7 @@ expr_next: "valid_expr state expr \<Longrightarrow> valid_next state expr \<Long
 definition empty_state :: state where
   "empty_state = \<lparr>
     peer_id  = 1,
-    doc      = Ctx [],
+    doc      = MapV Map.empty,
     vars     = Map.empty,
     op_ids   = {},
     queue    = {},
@@ -160,42 +175,67 @@ by (rule expr_iter, rule expr_doc)
 
 value "let_var empty_state ''hi'' (Cursor [] Root)"
 
-fun update_ctx :: "doc_state \<Rightarrow> state_key list \<Rightarrow> operation \<Rightarrow> doc_state" where
-  "update_ctx (Ctx ((key, pres, child) # rest)) (k#ks) operation = (
+fun update_ctx :: "doc_state \<Rightarrow> state_key list \<Rightarrow> operation \<Rightarrow> doc_state option" where
+  "update_ctx (ListV ((key, pres, child) # rest)) (k#ks) operation = (
     if key = k
     then (
-      let child1 = update_ctx child ks operation;
-          pres1 = insert (op_id operation) pres
-      in  Ctx ((key, pres1, child1) # rest)
+      case update_ctx child ks operation of
+        Some child1 \<Rightarrow> (
+          let pres1 = insert (op_id operation) pres
+          in  Some (ListV ((key, pres1, child1) # rest)))
+      | None \<Rightarrow> None
     ) else (
-      case update_ctx (Ctx rest) (k#ks) operation of
-        Ctx rest1 \<Rightarrow> Ctx ((key, pres, child) # rest1)
-      | _         \<Rightarrow> Ctx ((key, pres, child) # rest)
+      case update_ctx (ListV rest) (k#ks) operation of
+        Some (ListV rest1) \<Rightarrow> Some (ListV ((key, pres, child) # rest1))
+      | _ \<Rightarrow> None
     )
   )"
-| "update_ctx (Ctx []) (k#ks) operation = (
-    let child1 = update_ctx (Ctx []) ks operation
-    in  Ctx [(k, {op_id operation}, child1)]
+| "update_ctx (ListV []) (k#ks) operation = None"
+| "update_ctx (MapV map_val) (k#ks) operation = (
+    case map_val k of
+      Some (pres, child) \<Rightarrow> (
+        case update_ctx child ks operation of
+          Some child1 \<Rightarrow> (
+            let pres1 = insert (op_id operation) pres
+            in  Some (MapV (map_val (k \<mapsto> (pres1, child1)))))
+        | None \<Rightarrow> None
+      )
+    | None \<Rightarrow> (
+        let child1_opt = (
+          case k of
+            MapT _  \<Rightarrow> update_ctx (MapV Map.empty) ks operation
+          | ListT _ \<Rightarrow> update_ctx (ListV []) ks operation
+        ) in (
+          case child1_opt of
+            Some child1 \<Rightarrow> Some (MapV (map_val (k \<mapsto> ({op_id operation}, child1))))
+          | None \<Rightarrow> None
+        )
+      )
   )"
-| "update_ctx ctx _ _ = ctx"
+| "update_ctx ctx _ _ = None"
 
-definition apply_op :: "doc_state \<Rightarrow> operation \<Rightarrow> doc_state" where
+definition apply_op :: "doc_state \<Rightarrow> operation \<Rightarrow> doc_state option" where
   "apply_op ctx operation = (
     case op_cursor operation of
       Cursor keys final \<Rightarrow> update_ctx ctx keys operation
   )"
 
-definition make_op :: "state \<Rightarrow> cursor \<Rightarrow> mutation \<Rightarrow> state" where
+definition make_op :: "state \<Rightarrow> cursor \<Rightarrow> mutation \<Rightarrow> state list" where
   "make_op state cursor mutation = (
     let ctr = Max ((\<lambda>(c,p). c) ` (op_ids state));
         opn = \<lparr>op_id     = (ctr + 1, (peer_id state)),
                op_deps   = (op_ids state),
                op_cursor = cursor,
-               op_mut    = mutation\<rparr>;
-        doc = apply_op (doc state) opn
-    in  state \<lparr>doc    := doc,
-               op_ids := insert (op_id opn) (op_ids state),
-               queue  := insert opn (queue state)\<rparr>
+               op_mut    = mutation\<rparr>
+    in (
+      case apply_op (doc state) opn of
+        Some new_doc \<Rightarrow> [state \<lparr>
+          doc    := new_doc,
+          op_ids := insert (op_id opn) (op_ids state),
+          queue  := insert opn (queue state)
+        \<rparr>]
+      | None \<Rightarrow> []
+    )
   )"
 
 fun eval_cmd :: "state \<Rightarrow> cmd \<Rightarrow> state list" where
@@ -206,17 +246,17 @@ fun eval_cmd :: "state \<Rightarrow> cmd \<Rightarrow> state list" where
   )"
 | "eval_cmd state (AssignCmd expr val) = (
     case eval_cur state expr of
-      Some cursor \<Rightarrow> [make_op state cursor (AssignOp val)]
+      Some cursor \<Rightarrow> make_op state cursor (AssignOp val)
     | None \<Rightarrow> []
   )"
 | "eval_cmd state (InsertCmd expr val) = (
     case eval_cur state expr of
-      Some cursor \<Rightarrow> [make_op state cursor (InsertOp val)]
+      Some cursor \<Rightarrow> make_op state cursor (InsertOp val)
     | None \<Rightarrow> []
   )"
 | "eval_cmd state (DeleteCmd expr) = (
     case eval_cur state expr of
-      Some cursor \<Rightarrow> [make_op state cursor DeleteOp]
+      Some cursor \<Rightarrow> make_op state cursor DeleteOp
     | None \<Rightarrow> []
   )"
 | "eval_cmd state YieldCmd = [state]" (* TODO yield *)
