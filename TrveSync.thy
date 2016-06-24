@@ -4,6 +4,8 @@ begin
 
 datatype primitive =
   Null
+| EmptyMap
+| EmptyList
 | Str string
 | Int int
 | Bool bool
@@ -34,10 +36,9 @@ datatype state_key =
 | RegT  id
 
 datatype doc_state =
-  Prim primitive
-| IdRef id
-| MapV "state_key \<Rightarrow> ((nat * nat) set * doc_state) option"
+  MapV "state_key \<Rightarrow> ((nat * nat) set * doc_state) option"
 | ListV "(state_key * (nat * nat) set * doc_state) list"
+| RegV "(nat * nat) \<Rightarrow> primitive option"
 
 datatype cursor = Cursor "state_key list" id
 
@@ -60,6 +61,12 @@ record state =
   queue    :: "operation set"
   send_buf :: "operation set"
   recv_buf :: "operation set"
+
+fun cur_path :: "cursor \<Rightarrow> state_key list" where
+  "cur_path (Cursor ks kn) = ks"
+
+fun cur_last :: "cursor \<Rightarrow> id" where
+  "cur_last (Cursor ks kn) = kn"
 
 fun defined_var :: "string \<Rightarrow> state \<Rightarrow> bool" where
   "defined_var x state =
@@ -175,50 +182,124 @@ by (rule expr_iter, rule expr_doc)
 
 value "let_var empty_state ''hi'' (Cursor [] Root)"
 
-fun update_ctx :: "doc_state \<Rightarrow> state_key list \<Rightarrow> operation \<Rightarrow> doc_state option" where
-  "update_ctx (ListV ((key, pres, child) # rest)) (k#ks) operation = (
-    if key = k
-    then (
-      case update_ctx child ks operation of
+
+fun find_elem :: "state_key \<Rightarrow> operation \<Rightarrow> (doc_state \<Rightarrow> doc_state option) \<Rightarrow> doc_state \<Rightarrow> doc_state option" where
+  "find_elem search_key opn update_fn (ListV ((key, pres, child) # rest)) = (
+    if key = search_key then (
+      case update_fn child of
         Some child1 \<Rightarrow> (
-          let pres1 = insert (op_id operation) pres
+          let pres1 = insert (op_id opn) pres
           in  Some (ListV ((key, pres1, child1) # rest)))
       | None \<Rightarrow> None
     ) else (
-      case update_ctx (ListV rest) (k#ks) operation of
+      case find_elem search_key opn update_fn (ListV rest) of
         Some (ListV rest1) \<Rightarrow> Some (ListV ((key, pres, child) # rest1))
       | _ \<Rightarrow> None
     )
   )"
-| "update_ctx (ListV []) (k#ks) operation = None"
-| "update_ctx (MapV map_val) (k#ks) operation = (
-    case map_val k of
+| "find_elem search_key opn update_fn (ListV []) = None"
+| "find_elem search_key opn update_fn (MapV map_val) = (
+    case map_val search_key of
       Some (pres, child) \<Rightarrow> (
-        case update_ctx child ks operation of
+        case update_fn child of
           Some child1 \<Rightarrow> (
-            let pres1 = insert (op_id operation) pres
-            in  Some (MapV (map_val (k \<mapsto> (pres1, child1)))))
+            let pres1 = insert (op_id opn) pres
+            in  Some (MapV (map_val (search_key \<mapsto> (pres1, child1)))))
         | None \<Rightarrow> None
       )
     | None \<Rightarrow> (
-        let child1_opt = (
-          case k of
-            MapT _  \<Rightarrow> update_ctx (MapV Map.empty) ks operation
-          | ListT _ \<Rightarrow> update_ctx (ListV []) ks operation
-        ) in (
-          case child1_opt of
-            Some child1 \<Rightarrow> Some (MapV (map_val (k \<mapsto> ({op_id operation}, child1))))
-          | None \<Rightarrow> None
-        )
+      let child1_opt = (
+        case search_key of
+          MapT  _ \<Rightarrow> update_fn (MapV Map.empty)
+        | ListT _ \<Rightarrow> update_fn (ListV [])
+        | RegT  _ \<Rightarrow> update_fn (RegV Map.empty)
+      ) in (
+        case child1_opt of
+          Some child1 \<Rightarrow> Some (MapV (map_val 
+            (search_key \<mapsto> ({op_id opn}, child1))))
+        | None \<Rightarrow> None
       )
+    )
   )"
-| "update_ctx ctx _ _ = None"
+| "find_elem _ _ _ _ = None"
 
-definition apply_op :: "doc_state \<Rightarrow> operation \<Rightarrow> doc_state option" where
-  "apply_op ctx operation = (
-    case op_cursor operation of
-      Cursor keys final \<Rightarrow> update_ctx ctx keys operation
+fun id_lessthan :: "id \<Rightarrow> id \<Rightarrow> bool" where
+  "id_lessthan (Id ctr1 n1) (Id ctr2 n2) =
+    ((ctr1 < ctr2) \<or> (ctr1 = ctr2 \<and> n1 < n2))"
+| "id_lessthan _ _ = False"
+
+fun apply_assign :: "operation \<Rightarrow> primitive \<Rightarrow> doc_state \<Rightarrow> doc_state option" where
+  "apply_assign opn EmptyMap ctx = Some ctx"
+| "apply_assign opn EmptyList ctx = Some ctx"
+| "apply_assign opn val (RegV reg_val) =
+    Some (RegV (reg_val ((op_id opn) \<mapsto> val)))"
+| "apply_assign _ _ _ = None"
+
+fun find_insert_pos :: "operation \<Rightarrow> (state_key * (nat * nat) set * doc_state) list \<Rightarrow> (state_key * (nat * nat) set * doc_state) list" where
+  "find_insert_pos opn elems = (
+    let new_id = (Id (fst (op_id opn)) (snd (op_id opn)));
+      new_entry = (
+        case op_mut opn of
+          InsertOp EmptyMap \<Rightarrow> (MapT new_id, {op_id opn}, MapV Map.empty)
+        | InsertOp EmptyList \<Rightarrow> (ListT new_id, {op_id opn}, ListV [])
+        | InsertOp val \<Rightarrow> (RegT new_id, {op_id opn}, RegV (Map.empty ((op_id opn) \<mapsto> val)))
+      )
+    in (case elems of
+      (key, pres, child) # rest \<Rightarrow> (
+        if id_lessthan (get_id key) new_id
+        then new_entry # (key, pres, child) # rest
+        else (key, pres, child) # (find_insert_pos opn rest)
+      )
+    | [] \<Rightarrow> [new_entry]
+    )
   )"
+
+fun apply_insert :: "operation \<Rightarrow> id \<Rightarrow> doc_state \<Rightarrow> doc_state option" where
+  "apply_insert opn Head (ListV elems) =
+    Some (ListV (find_insert_pos opn elems))"
+| "apply_insert opn prev_id (ListV ((key, pres, child) # rest)) = (
+    let rest1_opt = (
+      if prev_id = (get_id key) then (
+        Some (ListV (find_insert_pos opn rest))
+      ) else (
+        apply_insert opn prev_id (ListV rest)
+      )
+    ) in (
+      case rest1_opt of
+        Some (ListV rest1) \<Rightarrow> Some (ListV ((key, pres, child) # rest1))
+      | _ \<Rightarrow> None
+    )
+  )"
+| "apply_insert _ _ _ = None"
+
+fun apply_delete :: "operation \<Rightarrow> id \<Rightarrow> doc_state \<Rightarrow> doc_state option" where
+  "apply_delete opn kn ctx = Some ctx" (* TODO *)
+
+fun clear :: "operation \<Rightarrow> doc_state \<Rightarrow> doc_state option" where
+  "clear opn ctx = Some ctx" (* TODO *)
+
+fun clear_elem :: "id \<Rightarrow> operation \<Rightarrow> doc_state \<Rightarrow> doc_state option" where
+  "clear_elem key opn ctx =
+    Option.bind (Option.bind
+      (find_elem (RegT key) opn (clear opn) ctx)
+      (find_elem (MapT key) opn (clear opn)))
+      (find_elem (ListT key) opn (clear opn))"
+
+function apply_op :: "cursor \<Rightarrow> operation \<Rightarrow> doc_state \<Rightarrow> doc_state option" where
+  "apply_op (Cursor (k#ks) kn) opn ctx =
+    find_elem k opn (apply_op (Cursor ks kn) opn) ctx"
+| "apply_op (Cursor [] kn) opn ctx = (
+    case op_mut opn of
+      AssignOp EmptyMap  \<Rightarrow> find_elem (MapT  kn) opn (clear opn) ctx
+    | AssignOp EmptyList \<Rightarrow> find_elem (ListT kn) opn (clear opn) ctx
+    | AssignOp val       \<Rightarrow> find_elem (RegT  kn) opn (apply_assign opn val) ctx
+    | InsertOp val       \<Rightarrow> apply_insert opn kn ctx
+    | DeleteOp           \<Rightarrow> apply_delete opn kn ctx
+  )"
+by pat_completeness auto
+termination by (relation "measures [
+  \<lambda>(cur, opn, doc). (case cur of Cursor ks kn \<Rightarrow> size ks)
+]") auto
 
 definition make_op :: "state \<Rightarrow> cursor \<Rightarrow> mutation \<Rightarrow> state list" where
   "make_op state cursor mutation = (
@@ -228,7 +309,7 @@ definition make_op :: "state \<Rightarrow> cursor \<Rightarrow> mutation \<Right
                op_cursor = cursor,
                op_mut    = mutation\<rparr>
     in (
-      case apply_op (doc state) opn of
+      case apply_op (op_cursor opn) opn (doc state) of
         Some new_doc \<Rightarrow> [state \<lparr>
           doc    := new_doc,
           op_ids := insert (op_id opn) (op_ids state),
