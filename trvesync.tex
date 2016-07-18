@@ -15,7 +15,7 @@
 \hyphenation{da-ta-cen-ter da-ta-cen-ters net-works time-stamp}
 
 \newif\ifproofdraft
-\proofdraftfalse
+\proofdrafttrue
 
 \newcommand{\evalto}{\;\Longrightarrow\;}
 
@@ -53,7 +53,13 @@ CRDTs, Collaborative Editing, P2P, JSON, Optimistic Replication, Semantics, Even
 
 \IEEEraisesectionheading{\section{Introduction}\label{sec:introduction}}
 
-\IEEEPARstart{T}{this} is where the introduction should go (TODO). Lorem ipsum dolor sit amet, consectetur adipiscing elit. Suspendisse mattis leo cursus tortor mattis tincidunt. Donec sed bibendum purus, vel blandit erat.
+\IEEEPARstart{U}{sers} of applications on mobile devices expect the applications still to work while the device is offline or has poor network connectivity, and to synchronize its state with the user's other devices when the network is available. Examples of such applications include calendars, address books, note-taking, and password managers. Moreover, many people want to collaborate with others on text documents, spreadsheets, presentations, graphics, and other kinds of document.
+
+What these applications have in common is that the same application state needs to be replicated to several devices, each of which may modify the state locally. Traditional concurrency control approaches such as serializability would cause the application to become unusable at times of poor network connectivity, so we must assume that users can make arbitrary modifications concurrently on different devices, and any resulting conflicts must be resolved.
+
+The simplest way of resolving conflicts is to discard some document modifications if a conflict occurred, for example using a ``last writer wins'' policy. However, this approach is undesirable as it incurs data loss. An alternative is to let the user manually resolve the conflict, which is tedious in case of modifications that could be merged automatically.
+
+TODO more introduction.
 
 % TODO papers on formal verification of CRDTs or similar:
 % Gotsman et al, "cause I'm strong enough", POPL 2016
@@ -935,6 +941,11 @@ Many replicated data systems need to deal with the problem of concurrent, confli
 Another frequently-used approach to conflict resolution is \emph{last writer wins} (LWW), which arbitrarily chooses one among several concurrent writes as ``winner'' and discards the others. This approach is used in Apache Cassandra, and it is an option in many other systems including Riak and CouchDB. LWW does not meet our requirements, since we want no user input to be lost due to concurrent modifications.
 
 Finally, systems such as Bayou~\cite{Terry:1995dn} allow offline nodes to execute transactions tentatively, and confirm them when they are next online. This approach relies on all servers executing transactions in the same serial order, and deciding whether a transaction was successful depending on its preconditions. As discussed in section~\ref{sec:related-ot}, such serial ordering requirements are prohibitive in a peer-to-peer system of mobile devices.
+
+\section*{Acknowledgements}
+
+This research was supported by a grant from The Boeing Company.
+
 
 \bibliographystyle{IEEEtran}
 \bibliography{references}{}
