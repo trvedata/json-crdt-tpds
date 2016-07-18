@@ -172,7 +172,7 @@ lemma "valid_expr empty_state Doc"
 by (rule expr_doc)
 
 lemma "valid_expr (let_var empty_state ''hi'' (Cursor [] Root)) (Var ''hi'')"
-by (simp, rule expr_var, rule expr_doc)
+by (rule expr_var, simp)
 
 lemma "valid_expr empty_state (Get Doc ''hi'')"
 by (rule expr_get, rule expr_doc)
