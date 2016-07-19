@@ -77,6 +77,38 @@ Our design is based on two simple principles:
 
 If the second principle is omitted, a simple ``last writer wins'' conflict resolution policy is sufficient, in which one version of a document is chosen arbitrarily, and any concurrent modifications are discarded. However, the requirement to preserve user input requires a more careful approach.
 
+
+\section{Related work}
+
+\subsection{Operational transformation}\label{sec:related-ot}
+
+Algorithms based on \emph{operational transformation} (OT) have long been used for collaborative editing applications~\cite{Ellis:1989ue,Ressel:1996wx,Sun:1998vf,Nichols:1995fd}. Most of them treat a document as a single ordered list (of characters, for example) and do not support the nested tree structures that are required for many applications. Some algorithms generalize OT to editing XML documents~\cite{Davis:2002iv,Ignat:2003jy,Wang:2015vo}, which provides nesting of ordered lists, but these algorithms do not support key-value maps as defined in this paper.
+
+Most deployed OT collaboration systems, including Google Docs~\cite{DayRichter:2010tt}, Etherpad~\cite{Etherpad:2011um}, Novell Vibe~\cite{Spiewak:2010vw} and Apache Wave (formerly Google Wave~\cite{Wang:2015vo}), rely on a single server to decide on a total ordering of operations~\cite{Lemonik:2016wh}, a design decision inherited from the Jupiter system~\cite{Nichols:1995fd}. This approach has the advantage of making the transformation functions simpler and less error-prone~\cite{Imine:2003ks}, but it does not meet our requirements, since we want to support peer-to-peer collaboration without requiring a single server.
+
+Many secure messaging protocols, which we plan to use for encrypted collaboration, do not guarantee that different recipients will see messages in the same order~\cite{Unger:2015kg}. Although it is possible to decide on a total ordering of operations by using an atomic broadcast protocol~\cite{Defago:2004ji}, which avoids relying on a single server, such protocols are equivalent to consensus~\cite{Chandra:1996cp}, so they can only safely make progress if a majority of participants are online and reachable. We expect that in peer-to-peer systems of mobile devices it will frequently be the case that only a minority of participants are online at the same time, and so any algorithm requiring atomic broadcast would become unavailable. The strongest guarantee such a system can give is causal ordering~\cite{Attiya:2015dm}.
+
+The Google Realtime API~\cite{Google:2015vk} is to our knowledge the only implementation of OT that supports arbitrary nesting of lists and maps. Like Google Docs, it relies on a single server~\cite{Lemonik:2016wh}. As a proprietary product, details of its algorithms have not been published.
+
+\subsection{CRDTs}\label{sec:related-crdts}
+
+CRDTs for registers, counters, maps and sets are widely known~\cite{Shapiro:2011un,Shapiro:2011wy}, and have been implemented in various deployed systems such as Riak~\cite{Brown:2014hs,Brown:2013wy}. For ordered lists, various algorithms have been proposed, including WOOT~\cite{Oster:2006wj}, RGA~\cite{Roh:2011dw}, Treedoc~\cite{Preguica:2009fz}, Logoot~\cite{Weiss:2010hx} and LSEQ~\cite{Nedelec:2013ky}. However, none of them support nesting: they assume that the elements of the CRDT map or list are atomic values, not another CRDT.
+
+The problem of nesting one CRDT inside another (also known as \emph{composition} or \emph{embedding}) has only been studied more recently. Riak allows nesting of counters and registers inside maps, and of maps within other maps~\cite{Brown:2014hs,Brown:2013wy}. Embedding counters inside maps raises questions of semantics, which have been studied by Baquero, Almeida and Lerche~\cite{Baquero:2016iv}. Almeida et al.~\cite{Almeida:2016tk} also define delta mutations for nested maps, and Baquero et al.~\cite{Baquero:2015tm} define a theoretical framework for composition of state-based CRDTs, based on lattices. None of this work integrates CRDTs for ordered lists, but the treatment of causality in these datatypes forms a basis for the semantics developed in this paper.
+
+Burckhardt et al.~\cite{Burckhardt:2012jy} define \emph{cloud types}, which are similar to CRDTs and can be composed. They define \emph{cloud arrays}, which behave similarly to our map datatype, and \emph{entities}, which are like unordered sets or relations; ordered lists are not defined in this framework. Our \textsf{yield} statement is inspired by Burckhardt et al.
+
+Although CRDTs for registers, maps and ordered lists have existed for years in isolation, we are not aware of any prior work that allows them all to be composed into an arbitrarily nested CRDT with a JSON-like structure.
+
+\subsection{Other approaches}\label{sec:related-other}
+
+Many replicated data systems need to deal with the problem of concurrent, conflicting modifications, but the solutions are often ad-hoc. For example, in Dynamo~\cite{DeCandia:2007ui}, if several values are concurrently written to the same key, the database preserves all of these values, and leaves conflict resolution to application code. Naively chosen merge functions often exhibit anomalies such as deleted items reappearing~\cite{DeCandia:2007ui}. As the complexity of this paper demonstrates, conflcit resolution is not a simple matter that can reasonably be left to application programmers.
+
+Another frequently-used approach to conflict resolution is \emph{last writer wins} (LWW), which arbitrarily chooses one among several concurrent writes as ``winner'' and discards the others. This approach is used in Apache Cassandra, and it is an option in many other systems including Riak and CouchDB. LWW does not meet our requirements, since we want no user input to be lost due to concurrent modifications.
+
+Finally, systems such as Bayou~\cite{Terry:1995dn} allow offline nodes to execute transactions tentatively, and confirm them when they are next online. This approach relies on all servers executing transactions in the same serial order, and deciding whether a transaction was successful depending on its preconditions. As discussed in section~\ref{sec:related-ot}, such serial ordering requirements are prohibitive in a peer-to-peer system of mobile devices.
+
+
 \section{Composing data structures}
 
 In this section we outline our approach by example, and demonstrate some of the problems that occur when nested data structures are made collaboratively editable. In the following section we provide formal semantics of our collaboratively editable datatype and prove its correctness.
@@ -813,7 +845,22 @@ As defined by the \textsc{Assign} rule, a register maintains a mapping from oper
 
 Clearing maps and lists takes a similar approach: each element of the map or list is recursively cleared using \textsf{clearElem}, and presence sets are updated to exclude $\mathit{deps}$. Thus, any list elements or map entries whose modifications causally precede the clearing operation will end up with empty presence sets, and thus be considered deleted. Any map or list elements containing operations that are concurrent with the clearing operation are preserved.
 
+
+\section{Conclusion}
+
+TODO conclusion.
+
+
+\section*{Acknowledgements}
+
+This research was supported by a grant from The Boeing Company.
+
+\bibliographystyle{IEEEtran}
+\bibliography{references}{}
+
 \ifproofdraft
+\appendices
+\section{Proof of convergence}
 
 When the operation is applied to the list state $A$, it produces a modified list state $A'$ as follows:
 \begin{align*}
@@ -911,42 +958,4 @@ If the reference element appears before $o_{n+1}$ in the final order, that means
 TODO that last bit of the argument is a bit hand-wavy, need to make it more precise. But I think the general approach is ok. That completes the induction step, and thus the proof.
 
 \fi % proofdraft
-
-\section{Related work}
-
-\subsection{Operational transformation}\label{sec:related-ot}
-
-Algorithms based on \emph{operational transformation} (OT) have long been used for collaborative editing applications~\cite{Ellis:1989ue,Ressel:1996wx,Sun:1998vf,Nichols:1995fd}. Most of them treat a document as a single ordered list (of characters, for example) and do not support the nested tree structures that are required for many applications. Some algorithms generalize OT to editing XML documents~\cite{Davis:2002iv,Ignat:2003jy,Wang:2015vo}, which provides nesting of ordered lists, but these algorithms do not support key-value maps as defined in this paper.
-
-Most deployed OT collaboration systems, including Google Docs~\cite{DayRichter:2010tt}, Etherpad~\cite{Etherpad:2011um}, Novell Vibe~\cite{Spiewak:2010vw} and Apache Wave (formerly Google Wave~\cite{Wang:2015vo}), rely on a single server to decide on a total ordering of operations~\cite{Lemonik:2016wh}, a design decision inherited from the Jupiter system~\cite{Nichols:1995fd}. This approach has the advantage of making the transformation functions simpler and less error-prone~\cite{Imine:2003ks}, but it does not meet our requirements, since we want to support peer-to-peer collaboration without requiring a single server.
-
-Many secure messaging protocols, which we plan to use for encrypted collaboration, do not guarantee that different recipients will see messages in the same order~\cite{Unger:2015kg}. Although it is possible to decide on a total ordering of operations by using an atomic broadcast protocol~\cite{Defago:2004ji}, which avoids relying on a single server, such protocols are equivalent to consensus~\cite{Chandra:1996cp}, so they can only safely make progress if a majority of participants are online and reachable. We expect that in peer-to-peer systems of mobile devices it will frequently be the case that only a minority of participants are online at the same time, and so any algorithm requiring atomic broadcast would become unavailable. The strongest guararantee such a system can give is causal ordering~\cite{Attiya:2015dm}.
-
-The Google Realtime API~\cite{Google:2015vk} is the only implementation of OT of which we aware that supports arbitrary nesting of lists and maps. Like Google Docs, it relies on a single server~\cite{Lemonik:2016wh}. As a proprietary product, details of its algorithms have not been published.
-
-\subsection{CRDTs}\label{sec:related-crdts}
-
-CRDTs for registers, counters, maps and sets are widely known~\cite{Shapiro:2011un,Shapiro:2011wy}, and have been implemented in various deployed systems such as Riak~\cite{Brown:2014hs,Brown:2013wy}. For ordered lists, various algorithms have been proposed, including WOOT~\cite{Oster:2006wj}, RGA~\cite{Roh:2011dw}, Treedoc~\cite{Preguica:2009fz}, Logoot~\cite{Weiss:2010hx} and LSEQ~\cite{Nedelec:2013ky}. However, none of them support nesting: they assume that the elements of the CRDT map or list are atomic values, not another CRDT.
-
-The problem of nesting one CRDT inside another (also known as \emph{composition} or \emph{embedding}) has only been studied more recently. Riak allows nesting of counters and registers inside maps, and of maps within other maps~\cite{Brown:2014hs,Brown:2013wy}. Embedding counters inside maps raises questions of semantics, which have been studied by Baquero, Almeida and Lerche~\cite{Baquero:2016iv}. Almeida et al.~\cite{Almeida:2016tk} also define delta mutations for nested maps, and Baquero et al.~\cite{Baquero:2015tm} define a theoretical framework for composition of state-based CRDTs, based on lattices. None of this work integrates CRDTs for ordered lists, but the treatment of causality in these datatypes forms a basis for the semantics developed in this paper.
-
-Burckhardt et al.~\cite{Burckhardt:2012jy} define \emph{cloud types}, which are similar to CRDTs and can be composed. They define \emph{cloud arrays}, which behave similarly to our map datatype, and \emph{entities}, which are like unordered sets or relations; ordered lists are not defined in this framework. Our \textsf{yield} statement is inspired by Burckhardt et al.
-
-Although CRDTs for registers, maps and ordered lists have existed for years in isolation, we are not aware of any prior work that allows them all to be composed into an arbitrarily nested CRDT with a JSON-like structure.
-
-\subsection{Other approaches}\label{sec:related-other}
-
-Many replicated data systems need to deal with the problem of concurrent, conflicting modifications, but the solutions are often ad-hoc. For example, in Dynamo~\cite{DeCandia:2007ui}, if several values are concurrently written to the same key, the database preserves all of these values, and leaves conflict resolution to application code. Naively chosen merge functions often exhibit anomalies, such as deleted items reappearing~\cite{DeCandia:2007ui}. As the complexity of this paper demonstrates, conflict resolution is not a simple matter that can reasonably be left to application programmers.
-
-Another frequently-used approach to conflict resolution is \emph{last writer wins} (LWW), which arbitrarily chooses one among several concurrent writes as ``winner'' and discards the others. This approach is used in Apache Cassandra, and it is an option in many other systems including Riak and CouchDB. LWW does not meet our requirements, since we want no user input to be lost due to concurrent modifications.
-
-Finally, systems such as Bayou~\cite{Terry:1995dn} allow offline nodes to execute transactions tentatively, and confirm them when they are next online. This approach relies on all servers executing transactions in the same serial order, and deciding whether a transaction was successful depending on its preconditions. As discussed in section~\ref{sec:related-ot}, such serial ordering requirements are prohibitive in a peer-to-peer system of mobile devices.
-
-\section*{Acknowledgements}
-
-This research was supported by a grant from The Boeing Company.
-
-
-\bibliographystyle{IEEEtran}
-\bibliography{references}{}
 \end{document}
