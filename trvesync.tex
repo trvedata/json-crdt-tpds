@@ -43,7 +43,8 @@
 
 \IEEEtitleabstractindextext{%
 \begin{abstract}
-TODO
+% abstract word limit: 100-200 words
+Many applications model their data in a general-purpose storage format such as JSON. This data structure is modified by the application as a result of user input. Such modifications are well understood if performed sequentially on a single copy of the data, but the semantics is unclear if the data is replicated and modified concurrently on multiple devices. In this paper we present an algorithm and formal semantics for a JSON data structure that automatically resolves concurrent modifications such that no updates are lost, and such that all replicas converge towards the same state. It supports arbitrarily nested list and map types, which can be modified by insertion, deletion and assignment. The algorithm performs all merging client-side and does not depend on ordering guarantees from the network, allowing it to be deployed in peer-to-peer networks and in messaging systems with end-to-end encryption.
 \end{abstract}
 
 \begin{IEEEkeywords}
@@ -53,13 +54,30 @@ CRDTs, Collaborative Editing, P2P, JSON, Optimistic Replication, Semantics, Even
 
 \IEEEraisesectionheading{\section{Introduction}\label{sec:introduction}}
 
-\IEEEPARstart{U}{sers} of applications on mobile devices expect the applications still to work while the device is offline or has poor network connectivity, and to synchronize its state with the user's other devices when the network is available. Examples of such applications include calendars, address books, note-taking, and password managers. Moreover, many people want to collaborate with others on text documents, spreadsheets, presentations, graphics, and other kinds of document.
+\IEEEPARstart{U}{sers} of mobile devices, such as smartphones, expect applications to continue working while the device is offline or has poor network connectivity, and to synchronize its state with the user's other devices when the network is available. Examples of such applications include calendars, address books, note-taking tools, to-do lists, and password managers. Moreover, many people want to collaborate with others on text documents, spreadsheets, presentations, graphics, and other kinds of document.
 
-What these applications have in common is that the same application state needs to be replicated to several devices, each of which may modify the state locally. Traditional concurrency control approaches such as serializability would cause the application to become unusable at times of poor network connectivity, so we must assume that users can make arbitrary modifications concurrently on different devices, and any resulting conflicts must be resolved.
+What these applications have in common is that the application state needs to be replicated to several devices, each of which may modify the state locally. Requiring serializability, the traditional approach to concurrency control, would cause the application to become unusable at times of poor network connectivity~\cite{Davidson:1985hv}. If we require that applications work regardless of the network, we must assume that users can make arbitrary modifications concurrently on different devices, and that any resulting conflicts must be resolved.
 
 The simplest way of resolving conflicts is to discard some document modifications if a conflict occurred, for example using a ``last writer wins'' policy. However, this approach is undesirable as it incurs data loss. An alternative is to let the user manually resolve the conflict, which is tedious in case of modifications that could be merged automatically.
 
-TODO more introduction.
+Current applications solve this problem with a range of ad-hoc and application-specific mechanisms. In this paper we present a general-purpose datatype that provides the full expressiveness of the JSON data model, and automatically merges any concurrent modifications without loss of information. We expect that implementations of this datatype will drastically simplify the development of collaborative and state-synchronizing applications for mobile devices.
+
+\subsection{JSON data model}
+
+JSON is a popular general-purpose data encoding format, used in many databases and web services. It has similarities to XML, and we compare them in section~\ref{sec:json-xml}. The structure of a JSON document can optionally be constrained by a schema; however, for simplicity, this paper discusses only untyped JSON without an explicit schema.
+
+A JSON document is a tree containing two types of branch node:
+
+\begin{description}
+\item[Map:] A node whose children have no defined order, and where each child is labelled with a string \emph{key}. A key uniquely identifies one of the children. We treat keys as immutable, but values as mutable, and key-value mappings can be added and removed from the map. A JSON map is also known as an \emph{object}.
+\item[List:] A node whose children have an order defined by the application. The list can be mutated by inserting or deleting list elements. A JSON list is also known as an \emph{array}.
+\end{description}
+
+A child of a branch node can be either another branch node, or a leaf node. A leaf of the tree contains a primitive value (string, number, boolean, or null). We treat primitive values as immutable, but allow the value of a leaf node to be modified by treating it as a \emph{register} that can be assigned a new value.
+
+This model is sufficient to express the state of a wide range of applications. For example, a text document can be represented by a list of single-character strings; character-by-character edits are then expressed as insertions and deletions of list elements. In section~\ref{sec:examples} we show further examples of using JSON to model application data.
+
+\subsection{Replication and conflict resolution}
 
 % TODO papers on formal verification of CRDTs or similar:
 % Gotsman et al, "cause I'm strong enough", POPL 2016
@@ -69,20 +87,32 @@ TODO more introduction.
 %
 % Look at KC's Quelea (also in DEBull March issue)
 
-Our design is based on two simple principles:
+We consider systems in which a full copy of the JSON document is replicated on several devices. Those devices could be servers in datacenters, but we focus on mobile devices such as smartphones and laptops, which have intermittent network connectivity. We do not distinguish between devices owned by the same user and different users. Our model allows each device to optimistically modify its local replica of the document, and to asynchronously propagate those edits to other replicas.
+
+Our only requirement of the network is that messages sent by one replica are eventually delivered to all other replicas, by retrying if delivery fails. The network is allowed to arbitrarily reorder or duplicate messages.
+
+Our algorithm works client-side and does not depend on any server to transform or process messages. This approach allows messages to be delivered via a peer-to-peer network and a secure messaging protocol with end-to-end encryption~\cite{Unger:2015kg}, although the details of the network implementation and cryptographic protocols are outside of the scope of this paper.
+
+In section~\ref{sec:semantics} we give a formal semantics that describes how conflicts are resolved when a JSON document is concurrently modified on different devices. Our design is based on three simple principles:
 \begin{enumerate}
 \item All replicas of the data structure should automatically converge towards the same state.
 \item No user input should be lost due to concurrent modifications.
+\item If all sequential permutations of a set of updates lead to the same state, then concurrent execution of those updates also leads to the same state~\cite{Bieniusa:2012gt}.
 \end{enumerate}
 
-If the second principle is omitted, a simple ``last writer wins'' conflict resolution policy is sufficient, in which one version of a document is chosen arbitrarily, and any concurrent modifications are discarded. However, the requirement to preserve user input requires a more careful approach.
+\subsection{Our contributions}
 
+Our main contribution in this work is to define an algorithm and formal semantics for collaborative, concurrent editing of JSON data structures with automatic conflict resolution. Although similar algorithms have previously been defined for lists, maps and registers individually (see section~\ref{sec:related}), to our knowledge this paper is the first to integrate all of these structures into an arbitrarily composable datatype.
 
-\section{Related work}
+Composing maps and lists into arbitrarily nested structures opens up subtle challenges that do not arise in flat structures, due to the possibility of concurrent edits at different levels of the tree. We illustrate some of those challenges by example in section~\ref{sec:examples}. On the other hand, nested structures are an important requirement for many applications; by providing an algorithm that handles conflict resolution on such structures, we hope to simplify the the development of applications that use optimistic replication.
+
+\section{Related work}\label{sec:related}
+
+In this section we discuss existing approaches to optimistic replication, collaborative editing and conflict resolution.
 
 \subsection{Operational transformation}\label{sec:related-ot}
 
-Algorithms based on \emph{operational transformation} (OT) have long been used for collaborative editing applications~\cite{Ellis:1989ue,Ressel:1996wx,Sun:1998vf,Nichols:1995fd}. Most of them treat a document as a single ordered list (of characters, for example) and do not support the nested tree structures that are required for many applications. Some algorithms generalize OT to editing XML documents~\cite{Davis:2002iv,Ignat:2003jy,Wang:2015vo}, which provides nesting of ordered lists, but these algorithms do not support key-value maps as defined in this paper.
+Algorithms based on \emph{operational transformation} (OT) have long been used for collaborative editing applications~\cite{Ellis:1989ue,Ressel:1996wx,Sun:1998vf,Nichols:1995fd}. Most of them treat a document as a single ordered list (of characters, for example) and do not support the nested tree structures that are required for many applications. Some algorithms generalize OT to editing XML documents~\cite{Davis:2002iv,Ignat:2003jy,Wang:2015vo}, which provides nesting of ordered lists, but these algorithms do not support key-value maps as defined in this paper (see section~\ref{sec:json-xml}). The performance of OT algorithms degrades rapidly as the number of concurrent operations increases~\cite{Li:2006kd}.
 
 Most deployed OT collaboration systems, including Google Docs~\cite{DayRichter:2010tt}, Etherpad~\cite{Etherpad:2011um}, Novell Vibe~\cite{Spiewak:2010vw} and Apache Wave (formerly Google Wave~\cite{Wang:2015vo}), rely on a single server to decide on a total ordering of operations~\cite{Lemonik:2016wh}, a design decision inherited from the Jupiter system~\cite{Nichols:1995fd}. This approach has the advantage of making the transformation functions simpler and less error-prone~\cite{Imine:2003ks}, but it does not meet our requirements, since we want to support peer-to-peer collaboration without requiring a single server.
 
@@ -92,40 +122,30 @@ The Google Realtime API~\cite{Google:2015vk} is to our knowledge the only implem
 
 \subsection{CRDTs}\label{sec:related-crdts}
 
-CRDTs for registers, counters, maps and sets are widely known~\cite{Shapiro:2011un,Shapiro:2011wy}, and have been implemented in various deployed systems such as Riak~\cite{Brown:2014hs,Brown:2013wy}. For ordered lists, various algorithms have been proposed, including WOOT~\cite{Oster:2006wj}, RGA~\cite{Roh:2011dw}, Treedoc~\cite{Preguica:2009fz}, Logoot~\cite{Weiss:2010hx} and LSEQ~\cite{Nedelec:2013ky}. However, none of them support nesting: they assume that the elements of the CRDT map or list are atomic values, not another CRDT.
+Conflict-free replicated datatypes (CRDTs) are a family of data structures that can be concurrently modified and that guarantee convergence of such concurrent updates. They work by attaching additional metadata to the data structure, and making modification operations commutative by construction. The JSON datatype described in this paper is a kind of CRDT.
+
+CRDTs for registers, counters, maps and sets are widely known~\cite{Shapiro:2011un,Shapiro:2011wy}, and have been implemented in various deployed systems such as Riak~\cite{Brown:2014hs,Brown:2013wy}. For ordered lists, various algorithms have been proposed, including WOOT~\cite{Oster:2006wj}, RGA~\cite{Roh:2011dw}, Treedoc~\cite{Preguica:2009fz}, Logoot~\cite{Weiss:2010hx} and LSEQ~\cite{Nedelec:2013ky}. However, none of them support nesting: they assume that the elements of the CRDT map or list are primitive values, not another CRDT.
 
 The problem of nesting one CRDT inside another (also known as \emph{composition} or \emph{embedding}) has only been studied more recently. Riak allows nesting of counters and registers inside maps, and of maps within other maps~\cite{Brown:2014hs,Brown:2013wy}. Embedding counters inside maps raises questions of semantics, which have been studied by Baquero, Almeida and Lerche~\cite{Baquero:2016iv}. Almeida et al.~\cite{Almeida:2016tk} also define delta mutations for nested maps, and Baquero et al.~\cite{Baquero:2015tm} define a theoretical framework for composition of state-based CRDTs, based on lattices. None of this work integrates CRDTs for ordered lists, but the treatment of causality in these datatypes forms a basis for the semantics developed in this paper.
 
-Burckhardt et al.~\cite{Burckhardt:2012jy} define \emph{cloud types}, which are similar to CRDTs and can be composed. They define \emph{cloud arrays}, which behave similarly to our map datatype, and \emph{entities}, which are like unordered sets or relations; ordered lists are not defined in this framework. Our \textsf{yield} statement is inspired by Burckhardt et al.
+Burckhardt et al.~\cite{Burckhardt:2012jy} define \emph{cloud types}, which are similar to CRDTs and can be composed. They define \emph{cloud arrays}, which behave similarly to our map datatype, and \emph{entities}, which are like unordered sets or relations; ordered lists are not defined in this framework.
 
 Although CRDTs for registers, maps and ordered lists have existed for years in isolation, we are not aware of any prior work that allows them all to be composed into an arbitrarily nested CRDT with a JSON-like structure.
 
 \subsection{Other approaches}\label{sec:related-other}
 
-Many replicated data systems need to deal with the problem of concurrent, conflicting modifications, but the solutions are often ad-hoc. For example, in Dynamo~\cite{DeCandia:2007ui}, if several values are concurrently written to the same key, the database preserves all of these values, and leaves conflict resolution to application code. Naively chosen merge functions often exhibit anomalies such as deleted items reappearing~\cite{DeCandia:2007ui}. As the complexity of this paper demonstrates, conflcit resolution is not a simple matter that can reasonably be left to application programmers.
+Many replicated data systems need to deal with the problem of concurrent, conflicting modifications, but the solutions are often ad-hoc. For example, in Dynamo~\cite{DeCandia:2007ui}, if several values are concurrently written to the same key, the database preserves all of these values, and leaves conflict resolution to application code. Naively chosen merge functions often exhibit anomalies such as deleted items reappearing~\cite{DeCandia:2007ui}. We believe that conflict resolution is not a simple matter that can reasonably be left to application programmers.
 
 Another frequently-used approach to conflict resolution is \emph{last writer wins} (LWW), which arbitrarily chooses one among several concurrent writes as ``winner'' and discards the others. This approach is used in Apache Cassandra, and it is an option in many other systems including Riak and CouchDB. LWW does not meet our requirements, since we want no user input to be lost due to concurrent modifications.
 
-Finally, systems such as Bayou~\cite{Terry:1995dn} allow offline nodes to execute transactions tentatively, and confirm them when they are next online. This approach relies on all servers executing transactions in the same serial order, and deciding whether a transaction was successful depending on its preconditions. As discussed in section~\ref{sec:related-ot}, such serial ordering requirements are prohibitive in a peer-to-peer system of mobile devices.
+Finally, systems such as Bayou~\cite{Terry:1995dn} allow offline nodes to execute transactions tentatively, and confirm them when they are next online. This approach relies on all servers executing transactions in the same serial order, and deciding whether a transaction was successful depending on its preconditions. As discussed in section~\ref{sec:related-ot}, such serial ordering requirements are prohibitive in a peer-to-peer system of mobile devices. The possibility of tentative transactions later being rolled back also opens the risk of user input being lost.
 
 
-\section{Composing data structures}
+\section{Composing data structures}\label{sec:composing}
 
-In this section we outline our approach by example, and demonstrate some of the problems that occur when nested data structures are made collaboratively editable. In the following section we provide formal semantics of our collaboratively editable datatype and prove its correctness.
+In this section we informally introduce our approach to collaborative editing of JSON data structures. A formal presentation of the algorithm follows in section~\ref{sec:semantics}.
 
-\subsection{Data model}
-
-Our data model for a document is based on JSON. It consists of a tree with the following types of node:
-
-\begin{description}
-\item[Map:] A branch node whose children are not ordered, and where each child is labelled with a string \emph{key}. A key uniquely identifies one of the children. Keys are immutable, but values are mutable, and key-value mappings can be added and removed from the map. A JSON map is also known as an \emph{object}.
-\item[List:] A branch node whose children have an order defined by the application. The list can be mutated by inserting or deleting list elements. A JSON list is also known as an \emph{array}.
-\item[Register:] A leaf node containing a primitive value (string, number, boolean or null). Although primitives are themselves immutable, a register can be mutated by assigning a new value to it.
-\end{description}
-
-Thus, in the tree of a JSON document, all the interior branch nodes are either maps or lists, and all the leaf nodes are registers. Maps and lists may be nested within each other arbitrarily. For simplicity we do not define a schema language or static type-checking rules, but such restrictions of the document structure could be added easily. Our approach also easily generalizes to other replicated datatypes such as counters or sets, which we do not spell out in detail in the interest of brevity.
-
-\subsection{Concurrent editing examples}
+\subsection{Concurrent editing examples}\label{sec:examples}
 
 \begin{figure}
 \centering
@@ -145,7 +165,7 @@ Thus, in the tree of a JSON document, all the interior branch nodes are either m
 \caption{Concurrent assignment to a register}\label{fig:register-assign}
 \end{figure}
 
-In this section we will examine some examples of concurrent edits that may occur in a JSON document, in order to illustrate some of the subtleties that arise.
+To illustrate some of the subtleties that arise when JSON documents are concurrently modified, we present some examples.
 
 Our first example is shown in Figure~\ref{fig:register-assign}. In a document that maps ``key'' to a register with value ``A'', one replica sets the value of the register to ``B'', while another concurrently sets it to ``C''. As the replicas subsequently exchange edits, they detect the conflict. Since we do not want to simply discard one of the edits, and the strings ``B'' and ``C'' cannot meaningfully be merged, the system must preserve both concurrent updates. This datatype is known as a \emph{multi-value register}: although a replica can only assign a single value to the register, reading the register may return a set of multiple values that were concurrently written. An implementation may keep metadata about the provenance of each value (who made the change, on which device, at what time) to assist users with manually resolving the conflict.
 
@@ -230,7 +250,7 @@ Our final example in Figure~\ref{fig:todo-item} shows a limitation of the princi
 
 The algorithm in this paper preserves all user input, and so it exhibits the behavior shown in Figure~\ref{fig:todo-item}. Further study will be required to determine to what degree this behavior matches the expectations of application developers and users.
 
-\subsection{JSON versus XML}
+\subsection{JSON versus XML}\label{sec:json-xml}
 
 The most common alternative to JSON is XML, and collaborative editing of XML documents has been previously studied~\cite{Davis:2002iv,Ignat:2003jy,Wang:2015vo}. Besides the superficial syntactical differences, the tree structure of XML and JSON appears quite similar. However, there is an important difference that we should highlight.
 
@@ -238,9 +258,7 @@ JSON has two collection constructs that can be arbitrarily nested: maps for unor
 
 Some applications may attach map-like semantics to the children of an XML document, for example by interpreting the child element name as key. However, these semantics are not part of XML itself and would not be enforced by existing collaborative editing algorithms for XML. If multiple children with the same key are concurrently created, existing algorithms would create duplicate children with the same key rather than merging them like in Figure~\ref{fig:two-lists}.
 
-We discuss existing algorithms for collaborative editing in section~\ref{sec:related-ot}.
-
-\subsection{Document editing API}
+\subsection{Document editing API}\label{sec:editing-api}
 
 \begin{figure}
 \centering
@@ -300,7 +318,7 @@ Figure~\ref{fig:make-doc} shows an example sequence of commands that constructs 
 
 A few features of this language deliberately differ from most mainstream programming languages: keys in maps are implicitly created when they are first accessed, so there is no need for a command to put a new key-value pair into a map; lists can only be navigated by iteration (\textsf{next}) but not by index; and the language has literals for creating empty maps and lists, but not for non-empty collections. As we shall see later, these features are helpful for achieving desirable semantics in the presence of concurrent modifications.
 
-\section{Formal semantics}
+\section{Formal semantics}\label{sec:semantics}
 
 \begin{figure}
 \centering \begin{alignat*}{3}
@@ -590,7 +608,7 @@ The formal evaluation rules for commands are given in Figure~\ref{fig:send-recv}
 
 \textsc{Make-Op} constructs an \textsf{op()} tuple of the form described above, and delegates to the \textsc{Apply-Local} rule to process the operation. \textsc{Apply-Local} does three things: it evaluates the operation to produce a modified local state $A_p'$, it adds the operation to the queue of generated operations $A_p(\mathsf{queue})$, and it adds the operation ID to the set of processed operations $A_p(\mathsf{ops})$.
 
-The remaining rules in Figure~\ref{fig:send-recv}, \textsc{Apply-Remote}, \textsc{Send}, \textsc{Recv} and \textsc{Yield} define the semantics of the \textsf{yield} command. Since any of these rules can be used to evaluate \textsf{yield}, the semantics is nondeterministic, which models the asynchronicity of the network between peers: a message sent by one peer arrives at another peer at some arbitrarily later point in time, and there is no mesage ordering guarantee in the network.
+The \textsf{yield} command, inspired by Burckhardt et al.~\cite{Burckhardt:2012jy}, performs network communication: sending and receiving operations to and from other peers, and applying operations from remote peers. The rules \textsc{Apply-Remote}, \textsc{Send}, \textsc{Recv} and \textsc{Yield} define the semantics of \textsf{yield}. Since any of these rules can be used to evaluate \textsf{yield}, the semantics is nondeterministic, which models the asynchronicity of the network between peers: a message sent by one peer arrives at another peer at some arbitrarily later point in time, and there is no mesage ordering guarantee in the network.
 
 The \textsc{Send} rule takes any operations that were placed in $A_p(\mathsf{queue})$ by \textsc{Apply-Local} and adds them to a send buffer $A_p(\mathsf{send})$. Correspondingly, the \textsc{Recv} rule takes operations in the send buffer of peer $q$ and adds them to the receive buffer $A_p(\mathsf{recv})$ of peer $p$. This is the only rule that involves more than one peer, and it models all network communication.
 
@@ -859,8 +877,7 @@ This research was supported by a grant from The Boeing Company.
 \bibliography{references}{}
 
 \ifproofdraft
-\appendices
-\section{Proof of convergence}
+\appendix[Proof of convergence]\label{sec:proof}
 
 When the operation is applied to the list state $A$, it produces a modified list state $A'$ as follows:
 \begin{align*}
