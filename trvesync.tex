@@ -64,7 +64,7 @@ Current applications solve this problem with a range of ad-hoc and application-s
 
 \subsection{JSON data model}
 
-JSON is a popular general-purpose data encoding format, used in many databases and web services. It has similarities to XML, and we compare them in section~\ref{sec:json-xml}. The structure of a JSON document can optionally be constrained by a schema; however, for simplicity, this paper discusses only untyped JSON without an explicit schema.
+JSON is a popular general-purpose data encoding format, used in many databases and web services. It has similarities to XML, and we compare them in Section~\ref{sec:json-xml}. The structure of a JSON document can optionally be constrained by a schema; however, for simplicity, this paper discusses only untyped JSON without an explicit schema.
 
 A JSON document is a tree containing two types of branch node:
 
@@ -75,25 +75,17 @@ A JSON document is a tree containing two types of branch node:
 
 A child of a branch node can be either another branch node, or a leaf node. A leaf of the tree contains a primitive value (string, number, boolean, or null). We treat primitive values as immutable, but allow the value of a leaf node to be modified by treating it as a \emph{register} that can be assigned a new value.
 
-This model is sufficient to express the state of a wide range of applications. For example, a text document can be represented by a list of single-character strings; character-by-character edits are then expressed as insertions and deletions of list elements. In section~\ref{sec:examples} we show further examples of using JSON to model application data.
+This model is sufficient to express the state of a wide range of applications. For example, a text document can be represented by a list of single-character strings; character-by-character edits are then expressed as insertions and deletions of list elements. In Section~\ref{sec:examples} we show further examples of using JSON to model application data.
 
-\subsection{Replication and conflict resolution}
-
-% TODO papers on formal verification of CRDTs or similar:
-% Gotsman et al, "cause I'm strong enough", POPL 2016
-% various papers by Sebastian Burckhardt
-% Roh et al's tech report (lemmas 8-13, theorem 4)
-% Zeller & Bieniusa
-%
-% Look at KC's Quelea (also in DEBull March issue)
+\subsection{Replication and conflict resolution}\label{sec:intro-replication}
 
 We consider systems in which a full copy of the JSON document is replicated on several devices. Those devices could be servers in datacenters, but we focus on mobile devices such as smartphones and laptops, which have intermittent network connectivity. We do not distinguish between devices owned by the same user and different users. Our model allows each device to optimistically modify its local replica of the document, and to asynchronously propagate those edits to other replicas.
 
-Our only requirement of the network is that messages sent by one replica are eventually delivered to all other replicas, by retrying if delivery fails. The network is allowed to arbitrarily reorder or duplicate messages.
+Our only requirement of the network is that messages sent by one replica are eventually delivered to all other replicas, by retrying if delivery fails. We assume the network may arbitrarily delay, reorder and duplicate messages.
 
 Our algorithm works client-side and does not depend on any server to transform or process messages. This approach allows messages to be delivered via a peer-to-peer network and a secure messaging protocol with end-to-end encryption~\cite{Unger:2015kg}, although the details of the network implementation and cryptographic protocols are outside of the scope of this paper.
 
-In section~\ref{sec:semantics} we give a formal semantics that describes how conflicts are resolved when a JSON document is concurrently modified on different devices. Our design is based on three simple principles:
+In Section~\ref{sec:semantics} we give a formal semantics that describes how conflicts are resolved when a JSON document is concurrently modified on different devices. Our design is based on three simple principles:
 \begin{enumerate}
 \item All replicas of the data structure should automatically converge towards the same state.
 \item No user input should be lost due to concurrent modifications.
@@ -102,9 +94,9 @@ In section~\ref{sec:semantics} we give a formal semantics that describes how con
 
 \subsection{Our contributions}
 
-Our main contribution in this work is to define an algorithm and formal semantics for collaborative, concurrent editing of JSON data structures with automatic conflict resolution. Although similar algorithms have previously been defined for lists, maps and registers individually (see section~\ref{sec:related}), to our knowledge this paper is the first to integrate all of these structures into an arbitrarily composable datatype.
+Our main contribution in this work is to define an algorithm and formal semantics for collaborative, concurrent editing of JSON data structures with automatic conflict resolution. Although similar algorithms have previously been defined for lists, maps and registers individually (see Section~\ref{sec:related}), to our knowledge this paper is the first to integrate all of these structures into an arbitrarily composable datatype.
 
-Composing maps and lists into arbitrarily nested structures opens up subtle challenges that do not arise in flat structures, due to the possibility of concurrent edits at different levels of the tree. We illustrate some of those challenges by example in section~\ref{sec:examples}. On the other hand, nested structures are an important requirement for many applications; by providing an algorithm that handles conflict resolution on such structures, we hope to simplify the the development of applications that use optimistic replication.
+Composing maps and lists into arbitrarily nested structures opens up subtle challenges that do not arise in flat structures, due to the possibility of concurrent edits at different levels of the tree. We illustrate some of those challenges by example in Section~\ref{sec:examples}. On the other hand, nested structures are an important requirement for many applications; by providing an algorithm that handles conflict resolution on such structures, we hope to simplify the the development of applications that use optimistic replication.
 
 \section{Related work}\label{sec:related}
 
@@ -112,7 +104,7 @@ In this section we discuss existing approaches to optimistic replication, collab
 
 \subsection{Operational transformation}\label{sec:related-ot}
 
-Algorithms based on \emph{operational transformation} (OT) have long been used for collaborative editing applications~\cite{Ellis:1989ue,Ressel:1996wx,Sun:1998vf,Nichols:1995fd}. Most of them treat a document as a single ordered list (of characters, for example) and do not support the nested tree structures that are required for many applications. Some algorithms generalize OT to editing XML documents~\cite{Davis:2002iv,Ignat:2003jy,Wang:2015vo}, which provides nesting of ordered lists, but these algorithms do not support key-value maps as defined in this paper (see section~\ref{sec:json-xml}). The performance of OT algorithms degrades rapidly as the number of concurrent operations increases~\cite{Li:2006kd}.
+Algorithms based on \emph{operational transformation} (OT) have long been used for collaborative editing applications~\cite{Ellis:1989ue,Ressel:1996wx,Sun:1998vf,Nichols:1995fd}. Most of them treat a document as a single ordered list (of characters, for example) and do not support the nested tree structures that are required for many applications. Some algorithms generalize OT to editing XML documents~\cite{Davis:2002iv,Ignat:2003jy,Wang:2015vo}, which provides nesting of ordered lists, but these algorithms do not support key-value maps as defined in this paper (see Section~\ref{sec:json-xml}). The performance of OT algorithms degrades rapidly as the number of concurrent operations increases~\cite{Li:2006kd}.
 
 Most deployed OT collaboration systems, including Google Docs~\cite{DayRichter:2010tt}, Etherpad~\cite{Etherpad:2011um}, Novell Vibe~\cite{Spiewak:2010vw} and Apache Wave (formerly Google Wave~\cite{Wang:2015vo}), rely on a single server to decide on a total ordering of operations~\cite{Lemonik:2016wh}, a design decision inherited from the Jupiter system~\cite{Nichols:1995fd}. This approach has the advantage of making the transformation functions simpler and less error-prone~\cite{Imine:2003ks}, but it does not meet our requirements, since we want to support peer-to-peer collaboration without requiring a single server.
 
@@ -138,12 +130,12 @@ Many replicated data systems need to deal with the problem of concurrent, confli
 
 Another frequently-used approach to conflict resolution is \emph{last writer wins} (LWW), which arbitrarily chooses one among several concurrent writes as ``winner'' and discards the others. This approach is used in Apache Cassandra, and it is an option in many other systems including Riak and CouchDB. LWW does not meet our requirements, since we want no user input to be lost due to concurrent modifications.
 
-Finally, systems such as Bayou~\cite{Terry:1995dn} allow offline nodes to execute transactions tentatively, and confirm them when they are next online. This approach relies on all servers executing transactions in the same serial order, and deciding whether a transaction was successful depending on its preconditions. As discussed in section~\ref{sec:related-ot}, such serial ordering requirements are prohibitive in a peer-to-peer system of mobile devices. The possibility of tentative transactions later being rolled back also opens the risk of user input being lost.
+Finally, systems such as Bayou~\cite{Terry:1995dn} allow offline nodes to execute transactions tentatively, and confirm them when they are next online. This approach relies on all servers executing transactions in the same serial order, and deciding whether a transaction was successful depending on its preconditions. As discussed in Section~\ref{sec:related-ot}, such serial ordering requirements are prohibitive in a peer-to-peer system of mobile devices. The possibility of tentative transactions later being rolled back also opens the risk of user input being lost.
 
 
 \section{Composing data structures}\label{sec:composing}
 
-In this section we informally introduce our approach to collaborative editing of JSON data structures. A formal presentation of the algorithm follows in section~\ref{sec:semantics}.
+In this section we informally introduce our approach to collaborative editing of JSON data structures. A formal presentation of the algorithm follows in Section~\ref{sec:semantics}.
 
 \subsection{Concurrent editing examples}\label{sec:examples}
 
@@ -162,7 +154,7 @@ In this section we informally introduce our approach to collaborative editing of
 \draw [thick,->] (right1) to (left2);
 \draw [thick,->] (right1) to node [right] {\footnotesize yield;} (right2);
 \end{tikzpicture}
-\caption{Concurrent assignment to a register}\label{fig:register-assign}
+\caption{Concurrent assignment to a register.}\label{fig:register-assign}
 \end{figure}
 
 To illustrate some of the subtleties that arise when JSON documents are concurrently modified, we present some examples.
@@ -195,7 +187,7 @@ Our first example is shown in Figure~\ref{fig:register-assign}. In a document th
 \draw [thick,->] (left1)  to (right3);
 \draw [thick,->] (right2) to (left2);
 \end{tikzpicture}
-\caption{Modifying the contents of a nested map while concurrently the entire map is overwritten}\label{fig:map-remove}
+\caption{Modifying the contents of a nested map while concurrently the entire map is overwritten.}\label{fig:map-remove}
 \end{figure*}
 
 Another example is given in Figure~\ref{fig:map-remove}. Here, one replica adds ``red'' to a map of colors, while concurrently another client first blanks out the entire map of colors, and then adds ``green''. As the replicas merge their edits, all changes must be preserved: ``blue'' must be absent from the final map, since it was removed by blanking out the map, while ``red'' and ``green'' must be present, since they were explicitly added.
@@ -223,7 +215,7 @@ Another example is given in Figure~\ref{fig:map-remove}. Here, one replica adds 
 \draw [thick,->] (left3)  to (right4);
 \draw [thick,->] (right3) to (left4);
 \end{tikzpicture}
-\caption{Two replicas concurrently create ordered lists under the same map key}\label{fig:two-lists}
+\caption{Two replicas concurrently create ordered lists under the same map key.}\label{fig:two-lists}
 \end{figure*}
 
 The example in Figure~\ref{fig:two-lists} shows two replicas concurrently creating a new shopping list under the same map key ``buy'', and adding items to the list. When the replicas are merged, the lists need to be merged also. We preserve the ordering and adjacency of items inserted at each replica, so ``ham'' appears after ``eggs'', and ``flour'' appears after ``milk'' in the merged result. There is no information on which replica's items should appear first in the merged result, so the algorithm can make an arbitrary choice between ``eggs, ham, milk, flour'' and ``milk, flour, eggs, ham'', provided that all replicas end up with the same order.
@@ -243,7 +235,7 @@ The example in Figure~\ref{fig:two-lists} shows two replicas concurrently creati
 \draw [thick,->] (left1)  to (right2);
 \draw [thick,->] (right1) to (left2);
 \end{tikzpicture}
-\caption{One replica removes a list element, while another concurrently updates its contents}\label{fig:todo-item}
+\caption{One replica removes a list element, while another concurrently updates its contents.}\label{fig:todo-item}
 \end{figure*}
 
 Our final example in Figure~\ref{fig:todo-item} shows a limitation of the principle of preserving all user input. In a to-do list application, one replica removes a to-do item from the list, while another replica concurrently marks the same item as done. As the changes are merged, the update of the map key ``done'' effectively causes the list item to be resurrected on the left replica, leading to a to-do item without a title (since the title was deleted as part of deleting the list item). This behavior is consistent with the example in Figure~\ref{fig:map-remove}, but it is perhaps surprising to users. In this example it may be more desirable to discard one of the concurrent updates, and thus preserve the implicit schema that a to-do item has both a ``title'' and a ``done'' field.
@@ -282,7 +274,7 @@ VAL & ::= & $n$ & $n \in \mathrm{Number}$ \\
 & $|$ & \verb|true| $|$ \verb|false| $|$ \verb|null| \\
 & $|$ & \verb|{}| $|$ \verb|[]|
 \end{tabular}
-\caption{Syntax of command language for querying and modifying a document}\label{fig:local-syntax}
+\caption{Syntax of command language for querying and modifying a document.}\label{fig:local-syntax}
 \end{figure}
 
 \begin{figure}
@@ -301,10 +293,10 @@ list.insert("cheese");
 eggs.values // evaluates to {"eggs"}
 eggs.next.values // evaluates to {"milk"}
 \end{verbatim}
-\caption{Example of programmatically constructing a JSON document}\label{fig:make-doc}
+\caption{Example of programmatically constructing a JSON document.}\label{fig:make-doc}
 \end{figure}
 
-To define the semantics for collaboratively editable data structures, we first define a simple command language that is executed locally at any of the peers, and which allows that peer's local copy of the document to be queried and modified. Performing read-only queries has no side-effects, but modifying the document has the effect of producing \emph{operations} describing the mutation. Those operations are applied to the local copy of the document, and also enqueued for broadcasting to other peers.
+To define the semantics for collaboratively editable data structures, we first define a simple command language that is executed locally at any of the replicas, and which allows that replica's local copy of the document to be queried and modified. Performing read-only queries has no side-effects, but modifying the document has the effect of producing \emph{operations} describing the mutation. Those operations are applied to the local copy of the document, and also enqueued for broadcasting to other replicas.
 
 The syntax of the command language is given in Figure~\ref{fig:local-syntax}. It is not a full programming language, but rather an API through which the document state is queried and modified. We assume that the program accepts user input and issues a (possibly infinite) sequence of commands to the API. We model only the semantics of those commands, and do not assume anything about the program in which the command language is embedded. The API differs slightly from the JSON libraries found in many programming languages, in order to allow us to define consistent merge semantics.
 
@@ -339,7 +331,7 @@ A few features of this language deliberately differ from most mainstream program
     \mathsf{listT}(\text{``shopping''})\rangle,\, \mathit{id}_1)} \\
 & \}
 \end{alignat*}
-\caption{Internal state $A_p$ of peer $p$ after the execution of the commands in Figure~\ref{fig:make-doc}.}\label{fig:state-example}
+\caption{Internal state $A_p$ of replica $p$ after the execution of the commands in Figure~\ref{fig:make-doc}.}\label{fig:state-example}
 \end{figure}
 
 \begin{figure*}
@@ -467,18 +459,18 @@ A few features of this language deliberately differ from most mainstream program
 \BinaryInfC{$\mathit{ctx},\, \mathsf{cursor}(\langle k_1, k_2, \dots, k_{n-1} \rangle,\, k_n).\mathsf{values}
     \evalto \mathit{val}$}
 \end{prooftree}
-\caption{Rules for evaluating an expression to obtain a cursor}\label{fig:expr-rules}
+\caption{Rules for evaluating expressions.}\label{fig:expr-rules}
 \end{figure*}
 
-The state of peer $p$ is described by $A_p$, a finite partial function. The semantics of the command language are defined by rules that inspect and modify this local state $A_p$, and which are independent of the state $A_{p'}$ of any other peer $p'$. The only communication between peers occurs in the evaluation of the \textsf{yield} command, which we discuss later. For now, we concentrate on the execution of commands at a single peer $p$.
+The state of replica $p$ is described by $A_p$, a finite partial function. The semantics of the command language are defined by rules that inspect and modify this local state $A_p$, and which are independent of the state $A_q$ of any other replica $q$. The only communication between replicas occurs in the evaluation of the \textsf{yield} command, which we discuss later. For now, we concentrate on the execution of commands at a single replica $p$.
 
-An illustrative example of the peer state $A_p$ is given in Figure~\ref{fig:state-example}, which corresponds to the shopping list example of Figure~\ref{fig:make-doc}. For each local variable defined with a \textsf{let} command, $A_p$ maps the variable name to a cursor. In addition, $A_p$ maps \textsf{mapT(doc)} to a nested partial function representing the contents of the document. \textsf{mapT} denotes that the document \textsf{doc} is of type map. The only map entry is the key ``shopping'' of type \textsf{listT}. The list is represented in a manner resembling a linked list, with each list element assigned a unique identifier ($\mathit{id}_1, \mathit{id}_2, \mathit{id}_3$), and special \textsf{head} and \textsf{tail} atoms denoting the beginning and end of the list, respectively.
+An illustrative example of the replica state $A_p$ is given in Figure~\ref{fig:state-example}, which corresponds to the shopping list example of Figure~\ref{fig:make-doc}. For each local variable defined with a \textsf{let} command, $A_p$ maps the variable name to a cursor. In addition, $A_p$ maps \textsf{mapT(doc)} to a nested partial function representing the contents of the document. \textsf{mapT} denotes that the document \textsf{doc} is of type map. The only map entry is the key ``shopping'' of type \textsf{listT}. The list is represented in a manner resembling a linked list, with each list element assigned a unique identifier ($\mathit{id}_1, \mathit{id}_2, \mathit{id}_3$), and special \textsf{head} and \textsf{tail} atoms denoting the beginning and end of the list, respectively.
 
 \subsection{Expression evaluation}
 
-Figure~\ref{fig:expr-rules} gives the rules for evaluating EXPR expressions in the command language, which are evaluated in the context of the local peer state $A_p$. The \textsc{Exec} rule formalizes the assumption that commands are executed sequentially. The \textsc{Let} rule allows the program to define a local variable, which is added to the local state, and the corresponding \textsc{Var} rule allows the program to retrieve the value of a previously defined variable.
+Figure~\ref{fig:expr-rules} gives the rules for evaluating EXPR expressions in the command language, which are evaluated in the context of the local replica state $A_p$. The \textsc{Exec} rule formalizes the assumption that commands are executed sequentially. The \textsc{Let} rule allows the program to define a local variable, which is added to the local state, and the corresponding \textsc{Var} rule allows the program to retrieve the value of a previously defined variable.
 
-The rules in Figure~\ref{fig:expr-rules} show how an expression is evaluated to a cursor, which unambiguously identifies a particular position in a JSON document by describing a path from the root of the document tree to some branch or leaf node. A cursor consists only of immutable keys and identifiers, so it can be sent over the network to another peer, where it can be used to locate the same position in the document.
+The rules in Figure~\ref{fig:expr-rules} show how an expression is evaluated to a cursor, which unambiguously identifies a particular position in a JSON document by describing a path from the root of the document tree to some branch or leaf node. A cursor consists only of immutable keys and identifiers, so it can be sent over the network to another replica, where it can be used to locate the same position in the document.
 
 For example,
 \[ \mathsf{cursor}(\langle \mathsf{mapT}(\mathsf{doc}), \mathsf{listT}(\text{``shopping''}) \rangle,\, \mathit{id}_1) \]
@@ -492,31 +484,31 @@ The \textsc{Iter} rule shifts the cursor into a list and positions it at the \te
 
 The $\textsc{Keys}_{1,2,3}$ rules allow the application to inspect the set of keys that are defined in a map. This set is determined by examining the local state, and excluding any keys for which the presence set is empty (indicating that the key has been deleted).
 
-Finally, the $\textsc{Val}_{1,2,3}$ rules allow the application to read the contents of a register at a particular cursor position, using a similar recursive rule structure as the \textsc{Next} rules. A register is expressed using the \textsf{regT} type annotation in the local state, and the \textsc{Val} rules only apply if the register identified by the cursor exists in $A_p$. Although a peer can only assign a single value to a register, a register can nevertheless contain multiple values if multiple peers concurrently assign values to it -- an issue we will explore in greater depth later.
+Finally, the $\textsc{Val}_{1,2,3}$ rules allow the application to read the contents of a register at a particular cursor position, using a similar recursive rule structure as the \textsc{Next} rules. A register is expressed using the \textsf{regT} type annotation in the local state, and the \textsc{Val} rules only apply if the register identified by the cursor exists in $A_p$. Although a replica can only assign a single value to a register, a register can nevertheless contain multiple values if multiple replicas concurrently assign values to it.
 
 \subsection{Generating operations}
 
-When commands mutate the state of the document, they generate \emph{operations} that describe the mutation. In our semantics, a command never directly modifies the local peer state $A_p$, but only generates an operation. That operation is then immediately applied to $A_p$ so that it takes effect locally, and the operation is also asynchronously broadcast to the other peers. A peer applies operations received from remote peers when its causal dependencies are satisfied, as detailed below.
+When commands mutate the state of the document, they generate \emph{operations} that describe the mutation. In our semantics, a command never directly modifies the local replica state $A_p$, but only generates an operation. That operation is then immediately applied to $A_p$ so that it takes effect locally, and the operation is also asynchronously broadcast to the other replicas. After an operation is received a from remote replica, it is applied locally when its causal dependencies are satisfied, as detailed below.
 
 \subsubsection{Lamport timestamps}
 
-Every operation in our model is given a unique identifier, which is used in the local state and in cursors. For example, in Figure~\ref{fig:state-example}, $\mathit{id}_{1,2,3}$ are used to identify list elements and also the values of registers. Those identifiers $\mathit{id}_{1,2,3}$ are in fact the identifiers of the operations that inserted the list elements.
+Every operation in our model is given a unique identifier, which is used in the local state and in cursors. For example, in Figure~\ref{fig:state-example}, $\mathit{id}_{1,2,3}$ are used to identify list elements and also the values of registers. Those identifiers $\mathit{id}_{1,2,3}$ are in fact the identifiers of the operations that inserted the list elements or performed the register assignments.
 
-In order to generate globally unique operation identifiers without requiring synchronous coordination between peers we use Lamport timestamps~\cite{Lamport:1978jq}. A Lamport timestamp is a pair $(c, p)$ where $p \in \mathrm{PeerID}$ is the unique identifier of the peer on which the edit is made (for example, a hash of its public key), and $c \in \mathbb{N}$ is a counter that is stored at each peer and incremented for every operation. Since each peer generates a strictly monotonically increasing sequence of counter values $c$, the pair $(c, p)$ is unique.
+In order to generate globally unique operation identifiers without requiring synchronous coordination between replicas we use Lamport timestamps~\cite{Lamport:1978jq}. A Lamport timestamp is a pair $(c, p)$ where $p \in \mathrm{ReplicaID}$ is the unique identifier of the replica on which the edit is made (for example, a hash of its public key), and $c \in \mathbb{N}$ is a counter that is stored at each replica and incremented for every operation. Since each replica generates a strictly monotonically increasing sequence of counter values $c$, the pair $(c, p)$ is unique.
 
-If a peer receives an operation with a counter value $c$ that is greater than the locally stored counter value, the local counter is increased to the value of the incoming counter. This ensures that if operation $o_1$ happened before $o_2$ (that is, the peer that generated $o_2$ had received and processed $o_1$ before $o_2$ was generated), then $o_2$ must have a greater counter value than $o_1$. Only concurrent operations can have equal counter values.
+If a replica receives an operation with a counter value $c$ that is greater than the locally stored counter value, the local counter is increased to the value of the incoming counter. This ensures that if operation $o_1$ causally happened before $o_2$ (that is, the replica that generated $o_2$ had received and processed $o_1$ before $o_2$ was generated), then $o_2$ must have a greater counter value than $o_1$. Only concurrent operations can have equal counter values.
 
 We can thus define a total ordering $<$ for Lamport timestamps:
 \[ (c_1, p_1) < (c_2, p_2) \;\text{ iff }\; (c_1 < c_2) \vee (c_1 = c_2 \wedge p_1 < p_2). \]
-If one operation happened before another, this ordering is consistent with causality (the earlier operation has a lower timesetamp). If two operations are concurrent, their order according to $<$ is arbitrary but deterministic. This ordering property is important for our definition of the semantics of ordered lists.
+If one operation happened before another, this ordering is consistent with causality (the earlier operation has a lower timestamp). If two operations are concurrent, their order according to $<$ is arbitrary but deterministic. This ordering property is important for our definition of the semantics of ordered lists.
 
 \subsubsection{Operation structure}
 
 An operation is a tuple of the form
 \begin{alignat*}{3}
 & \mathsf{op}( \\
-&& \mathit{id} &: \mathbb{N} \times \mathrm{PeerID}, \\
-&& \mathit{deps} &: \mathcal{P}(\mathbb{N} \times \mathrm{PeerID}), \\
+&& \mathit{id} &: \mathbb{N} \times \mathrm{ReplicaID}, \\
+&& \mathit{deps} &: \mathcal{P}(\mathbb{N} \times \mathrm{ReplicaID}), \\
 && \mathit{cur} &: \mathsf{cursor}(\langle k_1, \dots, k_{n-1} \rangle,\, k_n), \\
 && \mathit{mut} &: \mathsf{insert}(v) \mid \mathsf{delete} \mid \mathsf{assign}(v) && \quad v: \mathrm{VAL} \\
 & )
@@ -525,7 +517,7 @@ where $\mathit{id}$ is the Lamport timestamp that uniquely identifies the operat
 
 $\mathit{deps}$ is the set of causal dependencies of the operation, given as a set of Lamport timestamps. The semantics below defines $\mathit{deps}$ to be the set of all operation IDs that had been applied to the document at the time when the operation was generated. In a real implementation, this set would become impracticably large, so a compact representation of causal history would be used instead -- for example, version vectors~\cite{ParkerJr:1983jb}, state vectors~\cite{Ellis:1989ue}, or dotted version vectors~\cite{Preguica:2012fx}. However, to avoid ambiguity in our semantics we give the dependencies as a simple set of operation IDs.
 
-The purpose of the causal dependencies $\mathit{deps}$ is to impose a partial ordering on operations: an operation can only be applied after all operations that ``happened before'' it have been applied. In particular, this means that the sequence of operations generated at one particular peer will be applied in the same order at every other peer. Operations that are concurrent, i.e. where there is no causal dependency, can be applied in any order.
+The purpose of the causal dependencies $\mathit{deps}$ is to impose a partial ordering on operations: an operation can only be applied after all operations that ``happened before'' it have been applied. In particular, this means that the sequence of operations generated at one particular replica will be applied in the same order at every other replica. Operations that are concurrent, i.e. where there is no causal dependency, can be applied in any order.
 
 \subsubsection{Semantics of generating operations}
 
@@ -588,7 +580,7 @@ The purpose of the causal dependencies $\mathit{deps}$ is to impose a partial or
 \end{prooftree}
 
 \begin{prooftree}
-\AxiomC{$q: \mathrm{PeerID}$}
+\AxiomC{$q: \mathrm{ReplicaID}$}
 \LeftLabel{\textsc{Recv}}
 \UnaryInfC{$A_p,\, \mathsf{yield} \evalto
     A_p[\,\mathsf{recv} \,\mapsto\, A_p(\mathsf{recv}) \,\cup\, A_q(\mathsf{send})\,]$}
@@ -600,17 +592,17 @@ The purpose of the causal dependencies $\mathit{deps}$ is to impose a partial or
 \LeftLabel{\textsc{Yield}}
 \BinaryInfC{$A_p,\, \mathsf{yield} \evalto A_p''$}
 \end{prooftree}
-\caption{Rules for generating, sending, and receiving operations}
+\caption{Rules for generating, sending, and receiving operations.}
 \label{fig:send-recv}
 \end{figure*}
 
-The formal evaluation rules for commands are given in Figure~\ref{fig:send-recv}. The \textsc{Make-Assign}, \textsc{Make-Insert} and \textsc{Make-Delete} rules define how these respective commands mutate the document: all three delegate to the \textsc{Make-Op} rule to generate and apply the operation. \textsc{Make-Op} generates a new Lamport timestamp by choosing a counter value that is 1 greater than any existing counter in $A_p(\mathsf{ops})$, the set of all operation IDs that have been applied to the document.
+The evaluation rules for commands are given in Figure~\ref{fig:send-recv}. The \textsc{Make-Assign}, \textsc{Make-Insert} and \textsc{Make-Delete} rules define how these respective commands mutate the document: all three delegate to the \textsc{Make-Op} rule to generate and apply the operation. \textsc{Make-Op} generates a new Lamport timestamp by choosing a counter value that is 1 greater than any existing counter in $A_p(\mathsf{ops})$, the set of all operation IDs that have been applied to replica $p$.
 
 \textsc{Make-Op} constructs an \textsf{op()} tuple of the form described above, and delegates to the \textsc{Apply-Local} rule to process the operation. \textsc{Apply-Local} does three things: it evaluates the operation to produce a modified local state $A_p'$, it adds the operation to the queue of generated operations $A_p(\mathsf{queue})$, and it adds the operation ID to the set of processed operations $A_p(\mathsf{ops})$.
 
-The \textsf{yield} command, inspired by Burckhardt et al.~\cite{Burckhardt:2012jy}, performs network communication: sending and receiving operations to and from other peers, and applying operations from remote peers. The rules \textsc{Apply-Remote}, \textsc{Send}, \textsc{Recv} and \textsc{Yield} define the semantics of \textsf{yield}. Since any of these rules can be used to evaluate \textsf{yield}, the semantics is nondeterministic, which models the asynchronicity of the network between peers: a message sent by one peer arrives at another peer at some arbitrarily later point in time, and there is no mesage ordering guarantee in the network.
+The \textsf{yield} command, inspired by Burckhardt et al.~\cite{Burckhardt:2012jy}, performs network communication: sending and receiving operations to and from other replicas, and applying operations from remote replicas. The rules \textsc{Apply-Remote}, \textsc{Send}, \textsc{Recv} and \textsc{Yield} define the semantics of \textsf{yield}. Since any of these rules can be used to evaluate \textsf{yield}, the semantics is nondeterministic, which models the asynchronicity of the network between replicas: a message sent by one replica arrives at another replica at some arbitrarily later point in time, and there is no mesage ordering guarantee in the network.
 
-The \textsc{Send} rule takes any operations that were placed in $A_p(\mathsf{queue})$ by \textsc{Apply-Local} and adds them to a send buffer $A_p(\mathsf{send})$. Correspondingly, the \textsc{Recv} rule takes operations in the send buffer of peer $q$ and adds them to the receive buffer $A_p(\mathsf{recv})$ of peer $p$. This is the only rule that involves more than one peer, and it models all network communication.
+The \textsc{Send} rule takes any operations that were placed in $A_p(\mathsf{queue})$ by \textsc{Apply-Local} and adds them to a send buffer $A_p(\mathsf{send})$. Correspondingly, the \textsc{Recv} rule takes operations in the send buffer of replica $q$ and adds them to the receive buffer $A_p(\mathsf{recv})$ of replica $p$. This is the only rule that involves more than one replica, and it models all network communication.
 
 Once an operation appears in the receive buffer $A_p(\mathsf{recv})$, the rule \textsc{Apply-Remote} may apply. Under the preconditions that the operation has not already been processed and that its causal dependencies are satisified, \textsc{Apply-Remote} evaluates the operation in the same way as \textsc{Apply-Local}, and adds the operation ID to the set of processed operations $A_p(\mathsf{ops})$.
 
@@ -628,7 +620,7 @@ The actual document modifications are performed by evaluating the operations, wh
 \TrinaryInfC{$\mathit{ctx},\, \mathsf{op}(\mathit{id}, \mathit{deps},
     \mathsf{cursor}(\langle k_1, k_2, \dots, k_{n-1} \rangle,\, k_n), \mathit{mut}) \evalto
     \mathit{ctx}' [\, k_1 \,\mapsto\, \mathit{child}' \,]$}
-\end{prooftree}
+\end{prooftree}\vspace{6pt}
 
 \begin{center}
 \AxiomC{$k \in \mathrm{dom}(\mathit{ctx})$}
@@ -646,7 +638,7 @@ The actual document modifications are performed by evaluating the operations, wh
 \UnaryInfC{$\mathit{ctx},\, \mathsf{listT}(k) \evalto
     \{\,\mathsf{next}(\mathsf{head}) \,\mapsto\, \mathsf{tail} \,\}$}
 \DisplayProof\proofSkipAmount
-\end{center}
+\end{center}\vspace{6pt}
 
 \begin{center}
 \AxiomC{$\mathsf{regT}(k) \notin \mathrm{dom}(\mathit{ctx})$}
@@ -663,7 +655,7 @@ The actual document modifications are performed by evaluating the operations, wh
 \LeftLabel{$\textsc{Presence}_2$}
 \UnaryInfC{$\mathit{ctx},\, \mathsf{pres}(k) \evalto \{\}$}
 \DisplayProof\proofSkipAmount
-\end{center}
+\end{center}\vspace{6pt}
 
 \begin{prooftree}
 \AxiomC{$k_\mathit{tag} \in \{\mathsf{mapT}(k), \mathsf{listT}(k), \mathsf{regT}(k)\}$}
@@ -671,7 +663,7 @@ The actual document modifications are performed by evaluating the operations, wh
 \LeftLabel{\textsc{Add-ID}}
 \BinaryInfC{$\mathit{ctx},\, \mathsf{addId}(k_\mathit{tag}, \mathit{id}) \evalto
     \mathit{ctx}[\, \mathsf{pres}(k) \,\mapsto\, \mathit{pres} \,\cup\, \{\mathit{id}\} \,]$}
-\end{prooftree}
+\end{prooftree}\vspace{6pt}
 
 \begin{prooftree}
 \AxiomC{$\mathit{val} \not= \texttt{[]} \,\wedge\, \mathit{val} \not= \texttt{\string{\string}}$}
@@ -683,7 +675,7 @@ The actual document modifications are performed by evaluating the operations, wh
     \mathsf{cursor}(\langle\rangle,\, k), \mathsf{assign}(\mathit{val})) \evalto
     \mathit{ctx}''[\, \mathsf{regT}(k) \,\mapsto\,
     \mathit{child}[\, \mathit{id} \,\mapsto\, \mathit{val} \,]\,]$}
-\end{prooftree}
+\end{prooftree}\vspace{6pt}
 
 \begin{prooftree}
 \AxiomC{$\mathit{val} = \texttt{\string{\string}}$}
@@ -694,7 +686,7 @@ The actual document modifications are performed by evaluating the operations, wh
 \QuaternaryInfC{$\mathit{ctx},\, \mathsf{op}(\mathit{id}, \mathit{deps},
     \mathsf{cursor}(\langle\rangle,\, k), \mathsf{assign}(\mathit{val})) \evalto
     \mathit{ctx}''[\, \mathsf{mapT}(k) \,\mapsto\, \mathit{child} \,]$}
-\end{prooftree}
+\end{prooftree}\vspace{6pt}
 
 \begin{prooftree}
 \AxiomC{$\mathit{val} = \texttt{[]}$}
@@ -705,7 +697,7 @@ The actual document modifications are performed by evaluating the operations, wh
 \QuaternaryInfC{$\mathit{ctx},\, \mathsf{op}(\mathit{id}, \mathit{deps},
     \mathsf{cursor}(\langle\rangle,\, k), \mathsf{assign}(\mathit{val})) \evalto
     \mathit{ctx}''[\, \mathsf{listT}(k) \,\mapsto\, \mathit{child} \,]$}
-\end{prooftree}
+\end{prooftree}\vspace{6pt}
 
 \begin{prooftree}
 \AxiomC{$\mathit{ctx}(\mathsf{next}(\mathit{prev})) = \mathit{next}$}
@@ -717,7 +709,7 @@ The actual document modifications are performed by evaluating the operations, wh
     \mathsf{cursor}(\langle\rangle,\, \mathit{prev}), \mathsf{insert}(\mathit{val})) \evalto
     \mathit{ctx}'[\,\mathsf{next}(\mathit{prev}) \,\mapsto\, \mathit{id},\;
     \mathsf{next}(\mathit{id}) \,\mapsto\, \mathit{next}\,]$}
-\end{prooftree}
+\end{prooftree}\vspace{6pt}
 
 \begin{prooftree}
 \AxiomC{$\mathit{ctx}(\mathsf{next}(\mathit{prev})) = \mathit{next}$}
@@ -728,18 +720,18 @@ The actual document modifications are performed by evaluating the operations, wh
 \TrinaryInfC{$\mathit{ctx},\, \mathsf{op}(\mathit{id}, \mathit{deps},
     \mathsf{cursor}(\langle\rangle,\, \mathit{prev}), \mathsf{insert}(\mathit{val})) \evalto \mathit{ctx}'$}
 \end{prooftree}
-\caption{Rules for evaluating operations and modifying document state}\label{fig:operation-rules}
+\caption{Rules for applying insertion and assignment operations to update the state of a replica.}\label{fig:operation-rules}
 \end{sidewaysfigure*}
 
-Figure~\ref{fig:operation-rules} gives the rules that evaluate an operation $\mathsf{op}$ within a context $\mathit{ctx}$, and produce an updated context $\mathit{ctx}'$. These rules are used by \textsc{Apply-Local} and \textsc{Apply-Remote} to perform the state updates on a document.
+Figure~\ref{fig:operation-rules} gives the rules that evaluate an operation $\mathsf{op}$ within a context $\mathit{ctx}$, and produce an updated context $\mathit{ctx}'$. The context is initially the replica state $A_p$, but may refer to subtrees of the state as rules are recursively applied. These rules are used by \textsc{Apply-Local} and \textsc{Apply-Remote} to perform the state updates on a document.
 
-When the operation's cursor refers to a tree node that is not the document root $\mathsf{doc}$, the \textsc{Descend} rule first applies. It recursively descends the document tree according to the vector of keys given in the cursor. If the tree node already exists in the local peer state, \textsc{Child-Get} finds it, otherwise \textsc{Child-Map} and \textsc{Child-List} create an empty map or list respectively.
+When the operation's cursor refers to a tree node that is not the document root $\mathsf{doc}$, the \textsc{Descend} rule first applies. It recursively descends the document tree according to the vector of keys given in the cursor. If the tree node already exists in the local replica state, \textsc{Child-Get} finds it, otherwise \textsc{Child-Map} and \textsc{Child-List} create an empty map or list respectively.
 
 The \textsc{Descend} rule also invokes \textsc{Add-ID} at each tree node along the path described by the cursor, adding the operation ID to the presence set $\mathsf{pres}(k)$ to indicate that the subtree includes a mutation made by this operation.
 
-The remaining rules in Figure~\ref{fig:operation-rules} apply when the vector of keys in the cursor is empty, i.e. when descended to the context of the tree node to which the mutation applies. The \textsc{Assign} rule handles assignment of a register, \textsc{Empty-Map} handles assignment where the value is the empty map literal \verb|{}|, and \textsc{Empty-List} handles assignment of the empty list \verb|[]|. These three rules for \textsf{assign} have a similar structure: first clearing the prior value at the cursor (as discussed in the next section), then adding the operation ID to the presence set, and finally incorporating the new value into the tree of local state.
+The remaining rules in Figure~\ref{fig:operation-rules} apply when the vector of keys in the cursor is empty, i.e. when descended to the context of the tree node to which the mutation applies. The \textsc{Assign} rule handles assignment of a primitive value to a register, \textsc{Empty-Map} handles assignment where the value is the empty map literal \verb|{}|, and \textsc{Empty-List} handles assignment of the empty list \verb|[]|. These three rules for \textsf{assign} have a similar structure: first clearing the prior value at the cursor (as discussed in the next section), then adding the operation ID to the presence set, and finally incorporating the new value into the tree of local state.
 
-The $\textsc{Insert}_{1,2}$ rules handle insertion of a new element into an ordered list. In this case, the cursor refers to the list element $\mathit{prev}$, and the new element is inserted after that position in the list. $\textsc{Insert}_1$ performs the insertion by manipulating the linked list structure. $\textsc{Insert}_2$ handles the case of multiple peers concurrently inserting list elements at the same position, and uses the ordering relation $<$ on Lamport timestamps to consistently determine the insertion point. We show later that these rules ensure all peers converge towards the same state.
+The $\textsc{Insert}_{1,2}$ rules handle insertion of a new element into an ordered list. In this case, the cursor refers to the list element $\mathit{prev}$, and the new element is inserted after that position in the list. $\textsc{Insert}_1$ performs the insertion by manipulating the linked list structure. $\textsc{Insert}_2$ handles the case of multiple replicas concurrently inserting list elements at the same position, and uses the ordering relation $<$ on Lamport timestamps to consistently determine the insertion point. Our approach for handling insertions is based on the RGA algorithm~\cite{Roh:2011dw}. We show later that these rules ensure all replicas converge towards the same state.
 
 \subsubsection{Clearing prior state}
 
@@ -850,10 +842,10 @@ The $\textsc{Insert}_{1,2}$ rules handle insertion of a new element into an orde
 \LeftLabel{$\textsc{Clear-List}_3$}
 \UnaryInfC{$\mathit{ctx},\, \mathsf{clearList}(\mathit{deps}, k) \evalto \mathit{ctx},\, \{\}$}
 \end{prooftree}
-\caption{Rules for deleting and clearing state}\label{fig:clear-rules}
+\caption{Rules for applying deletion operations to update the state of a replica.}\label{fig:clear-rules}
 \end{figure*}
 
-Assignment and deletion operations require that prior state (the value being overwritten or deleted) is cleared, while also ensuring that concurrent modifications are not lost. The rules to handle this clearing process are given in Figure~\ref{fig:clear-rules}. Intuitively, the effect of clearing something is to reset it to its empty state by undoing any operations that causally precede the current operation, while leaving the effect of any concurrent operations untouched.
+Assignment and deletion operations require that prior state (the value being overwritten or deleted) is cleared, while also ensuring that concurrent modifications are not lost, as illustrated in Figure~\ref{fig:map-remove}. The rules to handle this clearing process are given in Figure~\ref{fig:clear-rules}. Intuitively, the effect of clearing something is to reset it to its empty state by undoing any operations that causally precede the current operation, while leaving the effect of any concurrent operations untouched.
 
 A \textsf{delete} operation can be used to delete either an element from an ordered list or a key from a map, depending on what the cursor refers to. The \textsc{Delete} rule shows how this operation is evaluated by delegating to \textsc{Clear-Elem}. In turn, \textsc{Clear-Elem} uses \textsc{Clear-Any} to clear out any data with a given key, regardless of whether it is of type \textsf{mapT}, \textsf{listT} or \textsf{regT}, and also updates the presence set to include any nested operation IDs, but exclude any operations in $\mathit{deps}$.
 
@@ -863,6 +855,9 @@ As defined by the \textsc{Assign} rule, a register maintains a mapping from oper
 
 Clearing maps and lists takes a similar approach: each element of the map or list is recursively cleared using \textsf{clearElem}, and presence sets are updated to exclude $\mathit{deps}$. Thus, any list elements or map entries whose modifications causally precede the clearing operation will end up with empty presence sets, and thus be considered deleted. Any map or list elements containing operations that are concurrent with the clearing operation are preserved.
 
+\subsection{Convergence}\label{sec:convergence}
+
+As outlined in Section~\ref{sec:intro-replication}, we require that all replicas automatically converge towards the same state -- a key requirement of a CRDT. We now formalize this notion, and show that the rules in Figures~\ref{fig:expr-rules} to~\ref{fig:clear-rules} satisfy this requirement.
 
 \section{Conclusion}
 
