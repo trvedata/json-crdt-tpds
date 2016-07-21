@@ -878,7 +878,7 @@ Note that it is valid for an execution to never perform any network communicatio
 A \emph{history} is a sequence of operations in the order it was applied at one particular replica $p$ by application of the rules \textsc{Apply-Local} and \textsc{Apply-Remote}.
 \end{definition}
 
-Since the evaluation rules sequentially apply one operation at a time at a given replica, the order is well-defined. Even if two replicas $p$ and $q$ applied the same set of operations, i.e. if $A_p(\mathsf{ops}) = A_q(\mathsf{ops})$, they may have applied any concurrent operations in a different order. Due to the premise $\mathit{op.deps} \subseteq A_p(\mathsf{ops})$ in \textsc{Apply-Remote}, any history is consistent with causality: if an operation has causal dependencies, it appears at some point after those dependencies in the history.
+Since the evaluation rules sequentially apply one operation at a time at a given replica, the order is well-defined. Even if two replicas $p$ and $q$ applied the same set of operations, i.e. if $A_p(\mathsf{ops}) = A_q(\mathsf{ops})$, they may have applied any concurrent operations in a different order. Due to the premise $\mathit{op.deps} \subseteq A_p(\mathsf{ops})$ in \textsc{Apply-Remote}, histories are consistent with causality: if an operation has causal dependencies, it appears at some point after those dependencies in the history.
 
 \begin{definition}
 The \emph{document state} of a replica $p$ is the subtree of $A_p$ containing the document: that is, $A_p(\mathsf{mapT}(\mathsf{doc}))$ or $A_p(\mathsf{listT}(\mathsf{doc}))$ or $A_p(\mathsf{regT}(\mathsf{doc}))$, whichever is defined.
@@ -894,10 +894,15 @@ This theorem is proved in the appendix. It formalizes the safety property of con
 
 The liveness property depends on assumptions of replicas invoking \textsf{yield} sufficiently often, and all nondeterministic rules for \textsf{yield} being chosen fairly. We will not formalize the liveness property in this paper, but assert that it can usually be provided in practice, as network interruptions are usually of finite duration.
 
-\section{Conclusion and further work}
+\section{Conclusions and further work}
 
-TODO conclusion.
+In this paper we demonstrated how to compose CRDTs for ordered lists, maps and registers into a compound CRDT with a JSON data model. It supports arbitrarily nested lists and maps, and it allows replicas to make arbitrary changes to the data without waiting for network communication. Replicas asynchronously send mutations to other replicas in the form of operations. Concurrent operations are commutative, which ensures that replicas converge towards the same state without requiring application-specific conflict resolution logic.
 
+This work focused on the formal semantics of the JSON CRDT, represented as a mathematical model. We have also created a practical implementation and will report on its performance characteristics in follow-on work. In fact, we wrote the {\LaTeX} source text of this paper using an experimental collaborative text editor that is based on our implementation of this CRDT. We are making the character-by-character editing trace of this document available as supplemental data of this paper, in order to provide a dataset for the empirical study of collaborative editing algorithms.
+
+Our principle of not losing input due to concurrent modifications appears reasonable, but as illustrated in Figure~\ref{fig:todo-item}, it leads to merged document states that may be surprising to application programmers who are more familiar with sequential programs. Further work will be needed to explore the semantics that application programmers expect and require of collaboratively editable data structures.
+
+The CRDT defined in this paper supports insertion, deletion and assignment operations. In addition to these, it would be useful to support a \emph{move} operation (to change the order of elements in an ordered list, or to move a subtree from one position in a document to another) and an \emph{undo} operation. We plan to address these missing features in future work.
 
 \section*{Acknowledgements}
 
