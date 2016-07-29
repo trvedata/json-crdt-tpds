@@ -902,7 +902,7 @@ This work focused on the formal semantics of the JSON CRDT, represented as a mat
 
 Our principle of not losing input due to concurrent modifications appears reasonable, but as illustrated in Figure~\ref{fig:todo-item}, it leads to merged document states that may be surprising to application programmers who are more familiar with sequential programs. Further work will be needed to explore the semantics that application programmers expect and require of collaboratively editable data structures.
 
-The CRDT defined in this paper supports insertion, deletion and assignment operations. In addition to these, it would be useful to support a \emph{move} operation (to change the order of elements in an ordered list, or to move a subtree from one position in a document to another) and an \emph{undo} operation. We plan to address these missing features in future work.
+The CRDT defined in this paper supports insertion, deletion and assignment operations. In addition to these, it would be useful to support a \emph{move} operation (to change the order of elements in an ordered list, or to move a subtree from one position in a document to another) and an \emph{undo} operation. Moreover, garbage collection (tombstone removal) is required in order to prevent unbounded growth of the datastructure. We plan to address these missing features in future work.
 
 \section*{Acknowledgements}
 
