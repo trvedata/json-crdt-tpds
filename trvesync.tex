@@ -51,18 +51,18 @@
 \IEEEtitleabstractindextext{%
 \begin{abstract}
 % abstract word limit: 100-200 words
-Many applications model their data in a general-purpose storage format such as JSON. This data structure is modified by the application as a result of user input. Such modifications are well understood if performed sequentially on a single copy of the data, but the semantics is unclear if the data is replicated and modified concurrently on multiple devices. In this paper we present an algorithm and formal semantics for a JSON data structure that automatically resolves concurrent modifications such that no updates are lost, and such that all replicas converge towards the same state. It supports arbitrarily nested list and map types, which can be modified by insertion, deletion and assignment. The algorithm performs all merging client-side and does not depend on ordering guarantees from the network, allowing it to be deployed in peer-to-peer networks, and in messaging systems with end-to-end encryption.
+Many applications model their data in a general-purpose storage format such as JSON. This data structure is modified by the application as a result of user input. Such modifications are well understood if performed sequentially on a single copy of the data, but if the data is replicated and modified concurrently on multiple devices, it is unclear what the semantics should be. In this paper we present an algorithm and formal semantics for a JSON data structure that automatically resolves concurrent modifications such that no updates are lost, and such that all replicas converge towards the same state. It supports arbitrarily nested list and map types, which can be modified by insertion, deletion and assignment. The algorithm performs all merging client-side and does not depend on ordering guarantees from the network, allowing it to be deployed in peer-to-peer networks, and in messaging systems with end-to-end encryption.
 %TODO mention here that this is particularly useful for mobile systems which suffer periods of disconnectivity and also use multiple interfaces (which messes with ordering)?
 \end{abstract}
 
 \begin{IEEEkeywords}
-CRDTs, Collaborative Editing, P2P, JSON, Optimistic Replication, Semantics, Eventual Consistency.
+CRDTs, Collaborative Editing, P2P, JSON, Optimistic Replication, Operational Semantics, Eventual Consistency.
 \end{IEEEkeywords}}
 \maketitle
 
 \IEEEraisesectionheading{\section{Introduction}\label{sec:introduction}}
 
-\IEEEPARstart{U}{sers} of mobile devices, such as smartphones, expect applications to continue working while the device is offline or has poor network connectivity, and to synchronize its state with the user's other devices when the network is available. Examples of such applications include calendars, address books, note-taking tools, to-do lists, and password managers. Moreover, many people want to collaborate with others on text documents, spreadsheets, presentations, graphics, and other kinds of document.
+\IEEEPARstart{U}{sers} of mobile devices, such as smartphones, expect applications to continue working while the device is offline or has poor network connectivity, and to synchronize its state with the user's other devices when the network is available. Examples of such applications include calendars, address books, note-taking tools, to-do lists, and password managers. Moreover, many people want to collaborate with others on text documents, spreadsheets, presentations, graphics, and other kinds of documents.
 %TODO This seems like a false dichotomy to me: some text documents are for a single user, replicated across their device, and calendars are often collaborative...
 
 What these applications have in common is that the application state needs to be replicated to several devices, each of which may modify the state locally. The traditional approach to concurrency control, serializability, would cause the application to become unusable at times of poor network connectivity~\cite{Davidson:1985hv}. If we require that applications work regardless of network availability, we must assume that users can make arbitrary modifications concurrently on different devices, and that any resulting conflicts must be resolved.
@@ -95,7 +95,7 @@ Our only requirement of the network is that messages sent by one replica are eve
 
 Our algorithm works client-side and does not depend on any server to transform or process messages. This approach allows messages to be delivered via a peer-to-peer network and a secure messaging protocol with end-to-end encryption~\cite{Unger:2015kg}, although the details of the network implementation and cryptographic protocols are outside of the scope of this paper.
 
-In Section~\ref{sec:semantics} we give a formal semantics that describes how conflicts are resolved when a JSON document is concurrently modified on different devices. Our design is based on three simple principles:
+In Section~\ref{sec:semantics} we define formal semantics describing how conflicts are resolved when a JSON document is concurrently modified on different devices. Our design is based on three simple principles:
 \begin{enumerate}
 \item All replicas of the data structure should automatically converge towards the same state.
 \item No user input should be lost due to concurrent modifications.
@@ -170,7 +170,7 @@ In this section we informally introduce our approach to collaborative editing of
 
 To illustrate some of the subtleties that arise when JSON documents are concurrently modified, we present some examples.
 
-Our first example is shown in Figure~\ref{fig:register-assign}. In a document that maps ``key'' to a register with value ``A'', one replica sets the value of the register to ``B'', while another concurrently sets it to ``C''. As the replicas subsequently exchange edits, they detect the conflict. Since we do not want to simply discard one of the edits, and the strings ``B'' and ``C'' cannot meaningfully be merged, the system must preserve both concurrent updates. This datatype is known as a \emph{multi-value register}: although a replica can only assign a single value to the register, reading the register may return a set of multiple values that were concurrently written. An implementation may keep metadata about the provenance of each value (who made the change, on which device, at what time) to assist users with manually resolving the conflict.
+Our first example is shown in Figure~\ref{fig:register-assign}. In a document that maps ``key'' to a register with value ``A'', one replica sets the value of the register to ``B'', while another concurrently sets it to ``C''. As the replicas subsequently exchange edits, they detect the conflict. Since we do not want to simply discard one of the edits, and the strings ``B'' and ``C'' cannot be meaningfully merged, the system must preserve both concurrent updates. This datatype is known as a \emph{multi-value register}: although a replica can only assign a single value to the register, reading the register may return a set of multiple values that were concurrently written. An implementation may keep metadata about the provenance of each value (who made the change, on which device, at what time) to assist users with manually resolving the conflict.
 
 \begin{figure*}
 \centering
@@ -259,7 +259,7 @@ The most common alternative to JSON is XML, and collaborative editing of XML doc
 
 JSON has two collection constructs that can be arbitrarily nested: maps for unordered key-value pairs, and lists for ordered sequences. In XML, the children of an element form an ordered sequence, while the attributes of an element are unordered key-value pairs. However, XML does not allow nested elements inside attributes -- the value of an attribute can only be a primitive datatype. Thus, XML supports maps within lists, but not lists within maps. In this regard, XML is less expressive than JSON: the example in Figure~\ref{fig:two-lists} cannot occur in XML.
 
-Some applications may attach map-like semantics to the children of an XML document, for example by interpreting the child element name as key. However, these semantics are not part of XML itself and would not be enforced by existing collaborative editing algorithms for XML. If multiple children with the same key are concurrently created, existing algorithms would create duplicate children with the same key rather than merging them like in Figure~\ref{fig:two-lists}.
+Some applications may attach map-like semantics to the children of an XML document, for example by interpreting the child element name as key. However, this key-value structure is not part of XML itself, and would not be enforced by existing collaborative editing algorithms for XML. If multiple children with the same key are concurrently created, existing algorithms would create duplicate children with the same key rather than merging them like in Figure~\ref{fig:two-lists}.
 
 \subsection{Document editing API}\label{sec:editing-api}
 
@@ -473,7 +473,7 @@ A few features of this language deliberately differ from most mainstream program
 \caption{Rules for evaluating expressions.}\label{fig:expr-rules}
 \end{figure*}
 
-The state of replica $p$ is described by $A_p$, a finite partial function. The semantics of the command language are defined by rules that inspect and modify this local state $A_p$, and which are independent of the state $A_q$ of any other replica $q$. The only communication between replicas occurs in the evaluation of the \textsf{yield} command, which we discuss later. For now, we concentrate on the execution of commands at a single replica $p$.
+The state of replica $p$ is described by $A_p$, a finite partial function. The evaluation rules of the command language inspect and modify this local state $A_p$, and they are independent of the state $A_q$ of any other replica $q$. The only communication between replicas occurs in the evaluation of the \textsf{yield} command, which we discuss later. For now, we concentrate on the execution of commands at a single replica $p$.
 
 An illustrative example of the replica state $A_p$ is given in Figure~\ref{fig:state-example}, which corresponds to the shopping list example of Figure~\ref{fig:make-doc}. For each local variable defined with a \textsf{let} command, $A_p$ maps the variable name to a cursor. In addition, $A_p$ maps \textsf{mapT(doc)} to a nested partial function representing the contents of the document. \textsf{mapT} denotes that the document \textsf{doc} is of type map. The only map entry is the key ``shopping'' of type \textsf{listT}. The list is represented in a manner resembling a linked list, with each list element assigned a unique identifier ($\mathit{id}_1, \mathit{id}_2, \mathit{id}_3$), and special \textsf{head} and \textsf{tail} atoms denoting the beginning and end of the list, respectively.
 
@@ -526,7 +526,7 @@ An operation is a tuple of the form
 \end{alignat*}
 where $\mathit{id}$ is the Lamport timestamp that uniquely identifies the operation, $\mathit{cur}$ is the cursor describing the position in the document being modified, and $\mathit{mut}$ is the mutation that was requested at the specified position.
 
-$\mathit{deps}$ is the set of causal dependencies of the operation, given as a set of Lamport timestamps. The semantics below defines $\mathit{deps}$ to be the set of all operation IDs that had been applied to the document at the time when the operation was generated. In a real implementation, this set would become impracticably large, so a compact representation of causal history would be used instead -- for example, version vectors~\cite{ParkerJr:1983jb}, state vectors~\cite{Ellis:1989ue}, or dotted version vectors~\cite{Preguica:2012fx}. However, to avoid ambiguity in our semantics we give the dependencies as a simple set of operation IDs.
+$\mathit{deps}$ is the set of causal dependencies of the operation, given as a set of Lamport timestamps. The rules below define $\mathit{deps}$ to be the set of all operation IDs that had already been applied to the document at the time when the operation was generated. In a real implementation, this set would become impracticably large, so a compact representation of causal history would be used instead -- for example, version vectors~\cite{ParkerJr:1983jb}, state vectors~\cite{Ellis:1989ue}, or dotted version vectors~\cite{Preguica:2012fx}. However, to avoid ambiguity in our semantics we give the dependencies as a simple set of operation IDs.
 
 The purpose of the causal dependencies $\mathit{deps}$ is to impose a partial ordering on operations: an operation can only be applied after all operations that ``happened before'' it have been applied. In particular, this means that the sequence of operations generated at one particular replica will be applied in the same order at every other replica. Operations that are concurrent, i.e. where there is no causal dependency, can be applied in any order.
 
@@ -611,7 +611,7 @@ The evaluation rules for commands are given in Figure~\ref{fig:send-recv}. The \
 
 \textsc{Make-Op} constructs an \textsf{op()} tuple of the form described above, and delegates to the \textsc{Apply-Local} rule to process the operation. \textsc{Apply-Local} does three things: it evaluates the operation to produce a modified local state $A_p'$, it adds the operation to the queue of generated operations $A_p(\mathsf{queue})$, and it adds the operation ID to the set of processed operations $A_p(\mathsf{ops})$.
 
-The \textsf{yield} command, inspired by Burckhardt et al.~\cite{Burckhardt:2012jy}, performs network communication: sending and receiving operations to and from other replicas, and applying operations from remote replicas. The rules \textsc{Apply-Remote}, \textsc{Send}, \textsc{Recv} and \textsc{Yield} define the semantics of \textsf{yield}. Since any of these rules can be used to evaluate \textsf{yield}, the semantics is nondeterministic, which models the asynchronicity of the network between replicas: a message sent by one replica arrives at another replica at some arbitrarily later point in time, and there is no mesage ordering guarantee in the network.
+The \textsf{yield} command, inspired by Burckhardt et al.~\cite{Burckhardt:2012jy}, performs network communication: sending and receiving operations to and from other replicas, and applying operations from remote replicas. The rules \textsc{Apply-Remote}, \textsc{Send}, \textsc{Recv} and \textsc{Yield} define the semantics of \textsf{yield}. Since any of these rules can be used to evaluate \textsf{yield}, their effect is nondeterministic, which models the asynchronicity of the network between replicas: a message sent by one replica arrives at another replica at some arbitrarily later point in time, and there is no mesage ordering guarantee in the network.
 
 The \textsc{Send} rule takes any operations that were placed in $A_p(\mathsf{queue})$ by \textsc{Apply-Local} and adds them to a send buffer $A_p(\mathsf{send})$. Correspondingly, the \textsc{Recv} rule takes operations in the send buffer of replica $q$ and adds them to the receive buffer $A_p(\mathsf{recv})$ of replica $p$. This is the only rule that involves more than one replica, and it models all network communication.
 
@@ -904,13 +904,13 @@ In this paper we demonstrated how to compose CRDTs for ordered lists, maps and r
 
 This work focused on the formal semantics of the JSON CRDT, represented as a mathematical model. We have also created a practical implementation and will report on its performance characteristics in follow-on work. In fact, we wrote the {\LaTeX} source text of this paper using an experimental collaborative text editor that is based on our implementation of this CRDT. We are making the character-by-character editing trace of this document available as supplemental data of this paper, in order to provide a dataset for the empirical study of collaborative editing algorithms.
 
-Our principle of not losing input due to concurrent modifications appears reasonable, but as illustrated in Figure~\ref{fig:todo-item}, it leads to merged document states that may be surprising to application programmers who are more familiar with sequential programs. Further work will be needed to explore the semantics that application programmers expect and require of collaboratively editable data structures.
+Our principle of not losing input due to concurrent modifications appears reasonable, but as illustrated in Figure~\ref{fig:todo-item}, it leads to merged document states that may be surprising to application programmers who are more familiar with sequential programs. Further work will be needed to understand the expectations of application programmers and to design data structures that are minimally surprising under concurrent modification.
 
 The CRDT defined in this paper supports insertion, deletion and assignment operations. In addition to these, it would be useful to support a \emph{move} operation (to change the order of elements in an ordered list, or to move a subtree from one position in a document to another) and an \emph{undo} operation. Moreover, garbage collection (tombstone removal) is required in order to prevent unbounded growth of the datastructure. We plan to address these missing features in future work.
 
 \section*{Acknowledgements}
 
-This research was supported by a grant from The Boeing Company.
+This research was supported by a grant from The Boeing Company. Thank you to Dominic Orchard and Diana Vasile for comments on a draft of this paper.
 
 \bibliographystyle{IEEEtran}
 \bibliography{references}{}
