@@ -926,7 +926,7 @@ For any two replicas $p$ and $q$ that participated in a valid execution, if $A_p
 \begin{proof}
 Consider the histories $H_p$ and $H_q$ at $p$ and $q$ respectively (see Definition~\ref{def:history}). The rules \textsc{Apply-Local} and \textsc{Apply-Remote} maintain the invariant that an operation is added to $A_p(\mathsf{ops})$ or $A_q(\mathsf{ops})$ if and only if it was applied to the document state at $p$ or $q$. Thus, $A_p(\mathsf{ops}) = A_q(\mathsf{ops})$ iff $H_p$ and $H_q$ contain the same set of operations (potentially ordered differently).
 
-The history at replica $p$ is a sequence of operations $H_p = \langle o_1, \dots, o_n \rangle$, and the document state at $p$ is derived from $H_p$ by starting in the empty state and applying the operations in order. Likewise, the document state at $q$ is derived from $H_q$, which is a permutation of $H_p$. Both histories must be consistent with causality, i.e. for all $i$ with $1 \le i \le n$, we require $o_i.\mathit{deps} \subseteq \{o_j.\mathit{id} \mid 1 \le j < i\}$. The causality invariant is maintained by the \textsc{Apply-*} rules.
+The history $H_p$ at replica $p$ is a sequence of $n$ operations: $H_p = \langle o_1, \dots, o_n \rangle$, and the document state at $p$ is derived from $H_p$ by starting in the empty state and applying the operations in order. Likewise, the document state at $q$ is derived from $H_q$, which is a permutation of $H_p$. Both histories must be consistent with causality, i.e. for all $i$ with $1 \le i \le n$, we require $o_i.\mathit{deps} \subseteq \{o_j.\mathit{id} \mid 1 \le j < i\}$. The causality invariant is maintained by the \textsc{Apply-*} rules.
 
 We can prove the theorem by induction over the length of history $n$.
 
@@ -934,31 +934,31 @@ We can prove the theorem by induction over the length of history $n$.
 
 \emph{Induction step:} Given histories $H_p$ and $H_q$ of length $n$, such that $H_p = \langle o_1, \dots, o_n \rangle$ and $H_q$ is a permutation of $H_p$, and such that applying $H_p$ results in the same document state as applying $H_q$, we can construct new histories $H_p'$ and $H_q'$ of length $n+1$ by inserting a new operation $o_{n+1}$ at any causally ready position in $H_p$ or $H_q$ respectively. We must then show that for all the histories $H_p'$ and $H_q'$ constructed this way, applying the sequence of operations in order results in the same document state.
 
-In order to prove the induction step, we examine the insertion of $o_{n+1}$ into $H_p$ and $H_q$. Each history can be split into a prefix, which is the minimal subsequence $\langle o_1, \dots, o_j \rangle$ such that $o_{n+1}.\mathit{deps} \subseteq \{o_1.\mathit{id}, \dots, o_j.\mathit{id}\}$, and a suffix, which is the remaining subsequence $\langle o_{j+1}, \dots, o_n \rangle$. The earliest position where $o_{n+1}$ can be inserted into the history is between the prefix and the suffix; the latest position is at the end of the suffix; or it could be inserted at any point within the suffix.
+In order to prove the induction step, we examine the insertion of $o_{n+1}$ into $H_p$ and $H_q$. Each history can be split into a prefix, which is the minimal subsequence $\langle o_1, \dots, o_j \rangle$ such that $o_{n+1}.\mathit{deps} \subseteq \{o_1.\mathit{id}, \dots, o_j.\mathit{id}\}$, and a suffix, which is the remaining subsequence $\langle o_{j+1}, \dots, o_n \rangle$. The prefix contains all operations that causally precede $o_{n+1}$, and possibly some operations that are concurrent with $o_{n+1}$; the suffix contains only operations that are concurrent with $o_{n+1}$. The earliest position where $o_{n+1}$ can be inserted into the history is between the prefix and the suffix; the latest position is at the end of the suffix; or it could be inserted at any point within the suffix.
 
-We show that the effect on the document state is the same, regardless of the position at which $o_{n+1}$ is inserted, and regardless of whether it is inserted into $H_p$ or $H_q$. We do this by showing that $o_{n+1}$ is commutative with respect to all operations in the suffix, i.e. with respect to all operations that are concurrent to $o_{n+1}$. We demonstrate this commutativity case-by-case depending on the type of mutation in $o_{n+1}$: insertion in Lemma~\ref{lem:insert-commute}, deletion in Lemma~\ref{lem:delete-commute}, and assignment in Lemma~\ref{lem:assign-commute}.
+We need to show that the effect on the document state is the same, regardless of the position at which $o_{n+1}$ is inserted, and regardless of whether it is inserted into $H_p$ or $H_q$. We do this by showing that $o_{n+1}$ is commutative with respect to all operations in the suffix, i.e. with respect to any operations that are concurrent to $o_{n+1}$. We demonstrate this commutativity case-by-case depending on the type of mutation in $o_{n+1}$: insertion in Lemma~\ref{lem:insert-commute}, deletion in Lemma~\ref{lem:delete-commute}, and assignment in Lemma~\ref{lem:assign-commute}.
 \end{proof}
 
 Before we can prove the commutativity of insertion, deletion and assignment, we must first define some more terms and prove some preliminary lemmas.
 
-\begin{definition}[list element precedence]
-List element $k_1$ \emph{precedes} list element $k_n$ in the ordered list $\mathit{ctx}$ if there exist $k_2, \dots, k_{n-1}$ such that for all $i$ with $1 \le i < n$, $\mathit{ctx}(\mathsf{next}(k_i)) = k_{i+1}$.
+\begin{definition}[appearing after]
+In the ordered list $\mathit{ctx}$, list element $k_j$ \emph{appears after} list element $k_1$ if there exists a (possibly empty) sequence of list elements $k_2, \dots, k_{j-1}$ such that for all $i$ with $1 \le i < j$, $\mathit{ctx}(\mathsf{next}(k_i)) = k_{i+1}$. Moreover, we say $k_j$ appears \emph{immediately after} $k_1$ if that sequence is empty, i.e. if $\mathit{ctx}(\mathsf{next}(k_1)) = k_j$.
 \end{definition}
 
-The definition of \emph{preceding} corresponds to the order in which the \textsc{Next} rules iterate over the list.
+The definition of \emph{appearing after} corresponds to the order in which the \textsc{Next} rules iterate over the list.
 
-\begin{lemma}\label{lem:list-precedes}
-If $k_1$ precedes $k_2$ in an ordered list, and the list is mutated according to the evaluation rules, $k_1$ also precedes $k_2$ in all successive document states.
+\begin{lemma}\label{lem:list-after}
+If $k_2$ appears after $k_1$ in an ordered list, and the list is mutated according to the evaluation rules, $k_2$ also appears after $k_1$ in all later document states.
 \end{lemma}
 
 \begin{proof}
-The only rule that modifies the \textsf{next} pointers in the context is $\textsc{Insert}_1$, and it inserts a new list element between two existing list elements (possibly \textsf{head} and/or \textsf{tail}). This modification preserves the precedence relationship between any two existing list elements. Since no other rule affects the list order, precedence is always preserved.
+The only rule that modifies the \textsf{next} pointers in the context is $\textsc{Insert}_1$, and it inserts a new list element between two existing list elements (possibly \textsf{head} and/or \textsf{tail}). This modification preserves the appears-after relationship between any two existing list elements. Since no other rule affects the list order, appears-after is always preserved.
 \end{proof}
 
-Note that deletion of an element from a list does not remove it from the sequence of \textsf{next} pointers, but only clears its presence set $\mathsf{pres}(k)$. We now consider what happens when several replicas concurrently insert new elements into the same list.
+Note that deletion of an element from a list does not remove it from the sequence of \textsf{next} pointers, but only clears its presence set $\mathsf{pres}(k)$.
 
 \begin{lemma}\label{lem:insert-between}
-If one replica inserts a list element $k_\mathit{new}$ between $k_1$ and $k_2$, i.e. if $k_1$ precedes $k_\mathit{new}$ in the list and $k_\mathit{new}$ precedes $k_2$ in the list on the source replica after applying \textsc{Apply-Local}, then $k_1$ precedes $k_\mathit{new}$ and $k_\mathit{new}$ precedes $k_2$ on every other replica where that operation is applied.
+If one replica inserts a list element $k_\mathit{new}$ between $k_1$ and $k_2$, i.e. if $k_\mathit{new}$ appears after $k_1$ in the list and $k_2$ appears after $k_\mathit{new}$ in the list on the source replica after applying \textsc{Apply-Local}, then $k_\mathit{new}$ appears after $k_1$ and $k_2$ appears after $k_\mathit{new}$ on every other replica where that operation is applied.
 \end{lemma}
 
 \begin{proof}
@@ -966,16 +966,43 @@ The rules for generating list operations ensure that $k_1$ is either \textsf{hea
 
 When the insertion operation is generated using the \textsc{Make-Op} rule, its operation identifier is given a counter value $\mathit{ctr}$ that is greater than the counter of any existing operation ID in $A_p(\mathsf{ops})$. If $k_2$ is an operation identifier, we must have $k_2 \in A_p(\mathsf{ops})$, since both \textsc{Apply-Local} and \textsc{Apply-Remote} add operation IDs to $A_p(\mathsf{ops})$ when applying an insertion. Thus, either $k_2 < k_\mathit{new}$ under the ordering relation $<$ for Lamport timestamps, or $k_2 = \mathsf{tail}$.
 
-When the insertion operation is applied on another replica using \textsc{Apply-Remote} and $\textsc{Insert}_{1,2}$, $k_1$ precedes $k_2$ on that replica (by Lemma~\ref{lem:list-precedes} and causality). The cursor of the operation is $\mathsf{cursor}(\langle\dots\rangle, k_1)$, so the rules start iterating the list at $k_1$ and never insert $k_\mathit{new}$ at a position that precedes $k_1$.
+When the insertion operation is applied on another replica using \textsc{Apply-Remote} and $\textsc{Insert}_{1,2}$, $k_2$ appears after $k_1$ on that replica (by Lemma~\ref{lem:list-after} and causality). The cursor of the operation is $\mathsf{cursor}(\langle\dots\rangle, k_1)$, so the rules start iterating the list at $k_1$, and therefore $k_\mathit{new}$ is inserted at some position after $k_1$.
 
-If other concurrent insertions occurred between $k_1$ and $k_2$, their operation ID may be greater than or less than $k_\mathit{new}$, and thus either $\textsc{Insert}_1$ or $\textsc{Insert}_2$ may apply. In particular, $\textsc{Insert}_2$ skips over any list elements whose Lamport timestamp is greater than $k_\mathit{new}$. However, we know that $k_2 < k_\mathit{new} \vee k_2 = \mathsf{tail}$, and so $\textsc{Insert}_1$ will apply with $\mathit{next}=k_2$ at the latest. The $\textsc{Insert}_{1,2}$ rules thus never iterate past $k_2$, and thus always insert $k_\mathit{new}$ at a list position that precedes $k_2$.
+If other concurrent insertions occurred between $k_1$ and $k_2$, their operation ID may be greater than or less than $k_\mathit{new}$, and thus either $\textsc{Insert}_1$ or $\textsc{Insert}_2$ may apply. In particular, $\textsc{Insert}_2$ skips over any list elements whose Lamport timestamp is greater than $k_\mathit{new}$. However, we know that $k_2 < k_\mathit{new} \vee k_2 = \mathsf{tail}$, and so $\textsc{Insert}_1$ will apply with $\mathit{next}=k_2$ at the latest. The $\textsc{Insert}_{1,2}$ rules thus never iterate past $k_2$, and thus $k_\mathit{new}$ is never inserted at a list position that appears after $k_2$.
 \end{proof}
 
 \begin{definition}[common ancestor]\label{def:common-ancestor}
-For two concurrent operations $\mathit{op}_1$ and $\mathit{op}_2$, the \emph{common ancestor} is the replica state resulting from applying all operations in $\mathit{op}_1.\mathit{deps} \cup \mathit{op}_2.\mathit{deps}$.
+In a history $H$, the \emph{common ancestor} of two concurrent operations $o_r$ and $o_s$ is the latest document state that causally precedes both $o_r$ and $o_s$.
 \end{definition}
 
-In other words, the common ancestor is the most recent replica state that causally precedes both operations, after which the replicas diverged. There many be any number of operations between the common ancestor and $\mathit{op}_{1,2}$.
+The common ancestor of $o_r$ and $o_s$ can be defined more formally as the document state resulting from applying a sequence of operations $\langle o_1, \dots, o_j \rangle$ that is the shortest prefix of $H$ that satisfies $(o_r.\mathit{deps} \cap o_s.\mathit{deps}) \subseteq \{o_1.\mathit{id}, \dots, o_j.\mathit{id}\}$.
+
+\begin{definition}[insertion interval]\label{def:insert-interval}
+Given two concurrent operations $o_r$ and $o_s$ that insert into the same list, the \emph{insertion interval} of $o_r$ is the pair of keys $(k_r^\mathrm{before}, k_r^\mathrm{after})$ such that $o_r.\mathit{id}$ appears after $k_r^\mathrm{before}$ when $o_r$ has been applied, $k_r^\mathrm{after}$ appears after $o_r.\mathit{id}$ when $o_r$ has been applied, and $k_r^\mathrm{after}$ appears immediately after $k_r^\mathrm{before}$ in the common ancestor of $o_r$ and $o_s$. The insertion interval of $o_s$ is the pair of keys $(k_s^\mathrm{before}, k_s^\mathrm{after})$ defined similarly.
+\end{definition}
+
+It may be the case that $k_r^\mathrm{before}$ or $k_s^\mathrm{before}$ is \textsf{head}, and that $k_r^\mathrm{after}$ or $k_s^\mathrm{after}$ is \textsf{tail}.
+
+\begin{lemma}\label{lem:insert-reorder}
+In an operation history $H$, an insertion operation is commutative with respect to concurrent insertion operations to the same list.
+\end{lemma}
+
+\begin{proof}
+Given any two concurrent insertion operations $o_r, o_s$ in $H$, we must show that the document state does not depend on the order in which $o_r$ and $o_s$ are applied.
+
+Either $o_r$ and $o_s$ have the same insertion interval as defined in Definition~\ref{def:insert-interval}, or they have different insertion intervals. If the insertion intervals are different, then by Lemma~\ref{lem:insert-between} the operations cannot affect each other, and so they have the same effect regardless of their order. So we need only analyze the case in which they have the same insertion interval $(k^\mathrm{before}, k^\mathrm{after})$.
+
+Without loss of generality, assume that $o_r.\mathit{id} < o_s.\mathit{id}$ according to the ordering relation on Lamport timestamps. (If the operation ID of $o_r$ is greater than $o_s$, $o_r$ and $o_s$ can be swapped in this proof.) We now distinguish two cases:
+
+\begin{enumerate}
+\item $o_r$ is applied before $o_s$ in $H$. Thus, at the time when $o_s$ is applied, $o_r$ has already been applied. When applying $o_s$, since $o_r$ has a lesser operation ID, the rule $\textsc{Insert}_1$ applies with $\mathit{next} = o_r.\mathit{id}$ at the latest, so the insertion position of $o_s$ must appear before $o_r$. It is not possible for $\textsc{Insert}_2$ to skip past $o_r$.
+\item $o_s$ is applied before $o_r$ in $H$. Thus, at the time when $o_r$ is applied, $o_s$ and any insertions causally prior to $o_s$ in the same insertion interval have already been applied.
+\end{enumerate}
+
+In both cases, the insertion position of $o_r$ appears after the insertion position of $o_s$. Since the argument applies to all pairs of concurrent operations $o_r, o_s$ in $H$, we deduce that the final order of elements in the list depends only on the operation IDs but not the order of application, which shows that concurrent insertions to the same list are commutative.
+\end{proof}
+
+%%%%%%%%%%%% TODO work in progress here %%%%%%%%%%%%%%%%%%%%%
 
 \begin{lemma}\label{lem:insert-commute}
 Concurrent insertions into the same list are commutative.
