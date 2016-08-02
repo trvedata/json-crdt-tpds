@@ -21,8 +21,8 @@
 
 \hyphenation{da-ta-cen-ter da-ta-cen-ters net-works time-stamp}
 
-\newif\ifproofdraft
-\proofdrafttrue
+\newif\ifincludeappendix
+\includeappendixtrue
 
 \newcommand{\evalto}{\;\Longrightarrow\;}
 
@@ -626,7 +626,7 @@ The actual document modifications are performed by evaluating the operations, wh
 \AxiomC{$\mathit{ctx},\, k_1 \evalto \mathit{child}$}
 \AxiomC{$\mathit{child},\, \mathsf{op}(\mathit{id}, \mathit{deps},
     \mathsf{cursor}(\langle k_2, \dots, k_{n-1} \rangle,\, k_n), \mathit{mut}) \evalto \mathit{child}'$}
-\AxiomC{$\mathit{ctx},\, \mathsf{addId}(k_1, \mathit{id}) \evalto \mathit{ctx}'$}
+\AxiomC{$\mathit{ctx},\, \mathsf{addId}(k_1, \mathit{id}, \mathit{mut}) \evalto \mathit{ctx}'$}
 \LeftLabel{\textsc{Descend}}
 \TrinaryInfC{$\mathit{ctx},\, \mathsf{op}(\mathit{id}, \mathit{deps},
     \mathsf{cursor}(\langle k_1, k_2, \dots, k_{n-1} \rangle,\, k_n), \mathit{mut}) \evalto
@@ -668,18 +668,26 @@ The actual document modifications are performed by evaluating the operations, wh
 \DisplayProof\proofSkipAmount
 \end{center}\vspace{6pt}
 
-\begin{prooftree}
+\begin{center}
+\AxiomC{$\mathit{mut} \not= \mathsf{delete}$}
 \AxiomC{$k_\mathit{tag} \in \{\mathsf{mapT}(k), \mathsf{listT}(k), \mathsf{regT}(k)\}$}
 \AxiomC{$\mathit{ctx},\, \mathsf{pres}(k) \evalto \mathit{pres}$}
-\LeftLabel{\textsc{Add-ID}}
-\BinaryInfC{$\mathit{ctx},\, \mathsf{addId}(k_\mathit{tag}, \mathit{id}) \evalto
+\LeftLabel{$\textsc{Add-ID}_1$}
+\TrinaryInfC{$\mathit{ctx},\, \mathsf{addId}(k_\mathit{tag}, \mathit{id}, \mathit{mut}) \evalto
     \mathit{ctx}[\, \mathsf{pres}(k) \,\mapsto\, \mathit{pres} \,\cup\, \{\mathit{id}\} \,]$}
-\end{prooftree}\vspace{6pt}
+\DisplayProof\hspace{3em}
+%
+\AxiomC{$\mathit{mut} = \mathsf{delete}$}
+\LeftLabel{$\textsc{Add-ID}_2$}
+\UnaryInfC{$\mathit{ctx},\, \mathsf{addId}(k_\mathit{tag}, \mathit{id}, \mathit{mut}) \evalto \mathit{ctx}$}
+\DisplayProof\proofSkipAmount
+\end{center}\vspace{6pt}
 
 \begin{prooftree}
 \AxiomC{$\mathit{val} \not= \texttt{[]} \,\wedge\, \mathit{val} \not= \texttt{\string{\string}}$}
 \AxiomC{$\mathit{ctx},\, \mathsf{clear}(\mathit{deps}, \mathsf{regT}(k)) \evalto \mathit{ctx}',\, \mathit{pres}$}
-\AxiomC{$\mathit{ctx}',\, \mathsf{addId}(\mathsf{regT}(k), \mathit{id}) \evalto \mathit{ctx}''$}
+\AxiomC{$\mathit{ctx}',\, \mathsf{addId}(\mathsf{regT}(k), \mathit{id}, \mathsf{assign}(\mathit{val}))
+    \evalto \mathit{ctx}''$}
 \AxiomC{$\mathit{ctx}'',\, \mathsf{regT}(k) \evalto \mathit{child}$}
 \LeftLabel{\textsc{Assign}}
 \QuaternaryInfC{$\mathit{ctx},\, \mathsf{op}(\mathit{id}, \mathit{deps},
@@ -691,7 +699,8 @@ The actual document modifications are performed by evaluating the operations, wh
 \begin{prooftree}
 \AxiomC{$\mathit{val} = \texttt{\string{\string}}$}
 \AxiomC{$\mathit{ctx},\, \mathsf{clearElem}(\mathit{deps}, k) \evalto \mathit{ctx}',\, \mathit{pres}$}
-\AxiomC{$\mathit{ctx}',\, \mathsf{addId}(\mathsf{mapT}(k), \mathit{id}) \evalto \mathit{ctx}''$}
+\AxiomC{$\mathit{ctx}',\, \mathsf{addId}(\mathsf{mapT}(k), \mathit{id}, \mathsf{assign}(\mathit{val}))
+    \evalto \mathit{ctx}''$}
 \AxiomC{$\mathit{ctx}'',\, \mathsf{mapT}(k) \evalto \mathit{child}$}
 \LeftLabel{\textsc{Empty-Map}}
 \QuaternaryInfC{$\mathit{ctx},\, \mathsf{op}(\mathit{id}, \mathit{deps},
@@ -702,7 +711,8 @@ The actual document modifications are performed by evaluating the operations, wh
 \begin{prooftree}
 \AxiomC{$\mathit{val} = \texttt{[]}$}
 \AxiomC{$\mathit{ctx},\, \mathsf{clearElem}(\mathit{deps}, k) \evalto \mathit{ctx}',\, \mathit{pres}$}
-\AxiomC{$\mathit{ctx}',\, \mathsf{addId}(\mathsf{listT}(k), \mathit{id}) \evalto \mathit{ctx}''$}
+\AxiomC{$\mathit{ctx}',\, \mathsf{addId}(\mathsf{listT}(k), \mathit{id}, \mathsf{assign}(\mathit{val}))
+    \evalto \mathit{ctx}''$}
 \AxiomC{$\mathit{ctx}'',\, \mathsf{listT}(k) \evalto \mathit{child}$}
 \LeftLabel{\textsc{Empty-List}}
 \QuaternaryInfC{$\mathit{ctx},\, \mathsf{op}(\mathit{id}, \mathit{deps},
@@ -738,7 +748,7 @@ Figure~\ref{fig:operation-rules} gives the rules that evaluate an operation $\ma
 
 When the operation's cursor refers to a tree node that is not the document root $\mathsf{doc}$, the \textsc{Descend} rule first applies. It recursively descends the document tree according to the vector of keys given in the cursor. If the tree node already exists in the local replica state, \textsc{Child-Get} finds it, otherwise \textsc{Child-Map} and \textsc{Child-List} create an empty map or list respectively.
 
-The \textsc{Descend} rule also invokes \textsc{Add-ID} at each tree node along the path described by the cursor, adding the operation ID to the presence set $\mathsf{pres}(k)$ to indicate that the subtree includes a mutation made by this operation.
+The \textsc{Descend} rule also invokes $\textsc{Add-ID}_{1,2}$ at each tree node along the path described by the cursor, adding the operation ID to the presence set $\mathsf{pres}(k)$ to indicate that the subtree includes a mutation made by this operation.
 
 The remaining rules in Figure~\ref{fig:operation-rules} apply when the vector of keys in the cursor is empty, i.e. when descended to the context of the tree node to which the mutation applies. The \textsc{Assign} rule handles assignment of a primitive value to a register, \textsc{Empty-Map} handles assignment where the value is the empty map literal \verb|{}|, and \textsc{Empty-List} handles assignment of the empty list \verb|[]|. These three rules for \textsf{assign} have a similar structure: first clearing the prior value at the cursor (as discussed in the next section), then adding the operation ID to the presence set, and finally incorporating the new value into the tree of local state.
 
@@ -915,7 +925,7 @@ This research was supported by a grant from The Boeing Company. Thank you to Dom
 \bibliographystyle{IEEEtran}
 \bibliography{references}{}
 
-\ifproofdraft
+\ifincludeappendix
 \clearpage
 \appendix[Proof of convergence]\label{sec:proof}
 
@@ -936,7 +946,7 @@ We can prove the theorem by induction over the length of history $n$.
 
 In order to prove the induction step, we examine the insertion of $o_{n+1}$ into $H_p$ and $H_q$. Each history can be split into a prefix, which is the minimal subsequence $\langle o_1, \dots, o_j \rangle$ such that $o_{n+1}.\mathit{deps} \subseteq \{o_1.\mathit{id}, \dots, o_j.\mathit{id}\}$, and a suffix, which is the remaining subsequence $\langle o_{j+1}, \dots, o_n \rangle$. The prefix contains all operations that causally precede $o_{n+1}$, and possibly some operations that are concurrent with $o_{n+1}$; the suffix contains only operations that are concurrent with $o_{n+1}$. The earliest position where $o_{n+1}$ can be inserted into the history is between the prefix and the suffix; the latest position is at the end of the suffix; or it could be inserted at any point within the suffix.
 
-We need to show that the effect on the document state is the same, regardless of the position at which $o_{n+1}$ is inserted, and regardless of whether it is inserted into $H_p$ or $H_q$. We do this by showing that $o_{n+1}$ is commutative with respect to all operations in the suffix, i.e. with respect to any operations that are concurrent to $o_{n+1}$. We demonstrate this commutativity case-by-case depending on the type of mutation in $o_{n+1}$: insertion in Lemma~\ref{lem:insert-commute}, deletion in Lemma~\ref{lem:delete-commute}, and assignment in Lemma~\ref{lem:assign-commute}.
+We need to show that the effect on the document state is the same, regardless of the position at which $o_{n+1}$ is inserted, and regardless of whether it is inserted into $H_p$ or $H_q$. We do this by showing that $o_{n+1}$ is commutative with respect to all operations in the suffix, i.e. with respect to any operations that are concurrent to $o_{n+1}$. We demonstrate this commutativity case-by-case depending on the type of mutation in $o_{n+1}$: insertion in Lemma~\ref{lem:insert-reorder}, deletion in Lemma~\ref{lem:delete-commute}, and assignment in Lemma~\ref{lem:assign-commute}.
 \end{proof}
 
 Before we can prove the commutativity of insertion, deletion and assignment, we must first define some more terms and prove some preliminary lemmas.
@@ -1017,27 +1027,29 @@ Note that all of the operations in this chain are causally dependent on $o_\math
 Therefore, the order of $o_r$ and $o_s$ in the final list is determined by the Lamport timestamps of the first insertions into the insertion interval after their common ancestor, in the chains of cursor references of the two operations. Since the argument above applies to all pairs of concurrent operations $o_r, o_s$ in $H$, we deduce that the final order of elements in the list depends only on the operation IDs but not the order of application, which shows that concurrent insertions to the same list are commutative.
 \end{proof}
 
-%%%%%%%%%%%% TODO work in progress here %%%%%%%%%%%%%%%%%%%%%
-
 \begin{lemma}\label{lem:delete-commute}
-Deletion is commutative with respect to concurrent operations.
+In a history $H$, a deletion operation is commutative with respect to concurrent operations.
 \end{lemma}
+
+\begin{proof}
+Given a deletion operation $o_d$ and any other concurrent operation $o_c$, we must show that the document state after applying both operations does not depend on the order in which $o_d$ and $o_c$ were applied.
+
+The rules in Figure~\ref{fig:clear-rules} define how a deletion operation $o_d$ is applied: starting at the cursor in the operation, they recursively descend the subtree, removing $o_d.\mathit{deps}$ from the presence set $\mathsf{pres}(k)$ at all branch nodes in the subtree, and updating all registers to remove any values written by operations in $o_d.\mathit{deps}$.
+
+If $o_c$ is an assignment or insertion operation, the \textsc{Assign} rule adds $o_c.\mathit{id}$ to the mapping from operation ID to value for a register, and the \textsc{Descend}, \textsc{Assign}, \textsc{Empty-Map} and \textsc{Empty-List} rules add $o_c.\mathit{id}$ to the presence sets $\mathsf{pres}(k)$ along the path through the document tree described by the cursor.
+
+If $o_d.\mathit{cur}$ is not a prefix of $o_c.\mathit{cur}$, the operations affect disjoint subtrees of the document, and so they are trivially commutative. Any state changes by \textsc{Descend} and $\textsc{Add-ID}_1$ along the shared part of the cursor path are applied using the set union operator $\cup$, which is commutative.
+
+Now consider the case where $o_d.\mathit{cur}$ is a prefix of $o_c.\mathit{cur}$. Since $o_c$ is concurrent with $o_d$, we know that $o_c.\mathit{id} \notin o_d.\mathit{deps}$. Therefore, if $o_c$ is applied before $o_d$ in the history, the \textsc{Clear-*} rules evaluating $o_d$ will leave any occurrences of $o_c.\mathit{id}$ in the document state undisturbed, while removing any occurrences of operations in $o_d.\mathit{deps}$.
+
+If $o_d$ is applied before $o_c$, the effect on presence sets and registers is the same as if they had been applied in the reverse order. Moreover, $o_c$ applies in the same way as if $o_d$ had not been applied previously, because applying a deletion only modifies presence sets and registers, without actually removing map keys or list elements, and because the rules for applying an operation are not conditional on the previous content of presence sets and registers.
+
+Thus, the effect of applying $o_c$ before $o_d$ is the same as applying $o_d$ before $o_c$, so the operations commute.
+\end{proof}
 
 \begin{lemma}\label{lem:assign-commute}
 Assignment is commutative with respect to concurrent operations.
 \end{lemma}
 
-\subsection{Convergence}
-
-First consider the case that $o_{n+1}=\mathsf{delete}(\mathit{id})$. A list element can only be deleted if it exists in the list, so by causality, there must exist an operation $o_i=\mathsf{insert}(\mathit{id}, \placeholder, \placeholder)$ at a prior point in the history. Moreover, the Lamport timestamp used as $\mathit{id}$ is unique, so there must be exactly one such $\mathsf{insert}$ operation, and there cannot be any $\mathsf{insert}$ operation for the same $\mathit{id}$ at a point after $o_{n+1}$ in the history.
-
-Note that applying $\mathsf{delete}(\mathit{id})$ modifies only the mapping for $A(\mathit{id})$, and otherwise leaves the state $A$ unchanged, so it is trivially commutative with respect to any operation that does not modify or depend on $A(\mathit{id})$.
-
-The first kind of operation that can modify the same $A(\mathit{id})$ is a $\mathsf{delete}$ operation for the same list element $\mathit{id}$. As the rule for applying this operation is idempotent, the presence of any other $\mathsf{delete}(\mathit{id})$ operations before or after $o_{n+1}$ in the history does not have any effect on the final state.
-
-We showed that an $\mathsf{insert}(\mathit{id}, \placeholder, \placeholder)$ operation can only occur prior to $\mathsf{delete}(\mathit{id})$. Thus, the only other kind of operation that can depend on or modify $A(\mathit{id})$ is an $\mathsf{insert}(\placeholder, \mathit{id}, \placeholder)$ operation, or a recursive call to the $\mathrm{apply}$ function that uses such an operation internally. Note that when applying such an $\mathsf{insert}$ operation, the queries for $A(\mathit{prev})$ ignore the $\mathit{value}$ element of the tuple and leave it unchanged, and only examine and modify the $\mathit{next}$ element of the tuple. By contrast, applying $\mathsf{delete}(\mathit{id})$ modifies only the $\mathit{value}$ element of $A(\mathit{id})$, and leaves the $\mathit{next}$ element unchanged.
-
-Thus, if $o_{n+1}=\mathsf{delete}(\mathit{id})$ is inserted at any causally ready point in a history, the final state does not depend on the insertion point, because the inserted operation does not interact with any prior or following operations.
-
-\fi % proofdraft
+\fi % includeappendix
 \end{document}
