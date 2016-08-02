@@ -983,6 +983,22 @@ Given two concurrent operations $o_r$ and $o_s$ that insert into the same list, 
 
 It may be the case that $k_r^\mathrm{before}$ or $k_s^\mathrm{before}$ is \textsf{head}, and that $k_r^\mathrm{after}$ or $k_s^\mathrm{after}$ is \textsf{tail}.
 
+\begin{lemma}\label{lem:insert-conflict}
+For any two concurrent insertion operations $o_r, o_s$ in a history $H$, if $o_r.\mathit{cur} = o_s.\mathit{cur}$, then the order at which the inserted elements appear in the list after applying $H$ is deterministic and independent of the order of $o_r$ and $o_s$ in $H$.
+\end{lemma}
+
+\begin{proof}
+Without loss of generality, assume that $o_r.\mathit{id} < o_s.\mathit{id}$ according to the ordering relation on Lamport timestamps. (If the operation ID of $o_r$ is greater than that of $o_s$, the two operations can be swapped in this proof.) We now distinguish the two possible orders of applying the operations:
+
+\begin{enumerate}
+\item $o_r$ is applied before $o_s$ in $H$. Thus, at the time when $o_s$ is applied, $o_r$ has already been applied. When applying $o_s$, since $o_r$ has a lesser operation ID, the rule $\textsc{Insert}_1$ applies with $\mathit{next} = o_r.\mathit{id}$ at the latest, so the insertion position of $o_s$ must appear before $o_r$. It is not possible for $\textsc{Insert}_2$ to skip past $o_r$.
+
+\item $o_s$ is applied before $o_r$ in $H$. Thus, at the time when $o_r$ is applied, $o_s$ has already been applied. When applying $o_r$, the rule $\textsc{Insert}_2$ applies with $\mathit{next} = o_s.\mathit{id}$, so the rule skips past $o_s$ and inserts $o_r$ at a position after $o_s$. Moreover, any list elements that appear between $o_s.\mathit{cur}$ and $o_s$ at the time of inserting $o_r$ must have a Lamport timestamp greater than $o_s.\mathit{id}$, so $\textsc{Insert}_2$ also skips over those list elements when inserting $o_r$. Thus, the insertion position of $o_r$ must be after $o_s$.
+\end{enumerate}
+
+Thus, the insertion position of $o_r$ appears after the insertion position of $o_s$, regardless of the order in which the two operations are applied. The ordering depends only on the operation IDs, and since these IDs are fixed at the time the operations are generated, the list order is determined by the IDs.
+\end{proof}
+
 \begin{lemma}\label{lem:insert-reorder}
 In an operation history $H$, an insertion operation is commutative with respect to concurrent insertion operations to the same list.
 \end{lemma}
@@ -992,29 +1008,16 @@ Given any two concurrent insertion operations $o_r, o_s$ in $H$, we must show th
 
 Either $o_r$ and $o_s$ have the same insertion interval as defined in Definition~\ref{def:insert-interval}, or they have different insertion intervals. If the insertion intervals are different, then by Lemma~\ref{lem:insert-between} the operations cannot affect each other, and so they have the same effect regardless of their order. So we need only analyze the case in which they have the same insertion interval $(k^\mathrm{before}, k^\mathrm{after})$.
 
-Without loss of generality, assume that $o_r.\mathit{id} < o_s.\mathit{id}$ according to the ordering relation on Lamport timestamps. (If the operation ID of $o_r$ is greater than $o_s$, $o_r$ and $o_s$ can be swapped in this proof.) We now distinguish two cases:
+If $o_r.\mathit{cur} = o_s.\mathit{cur}$, then by Lemma~\ref{lem:insert-conflict}, the operation with the greater operation ID appears first in the list, regardless of the order in which the operations are applied. If $o_r.\mathit{cur} \not= o_s.\mathit{cur}$, then one or both of the cursors must refer to a list element that appears between $k^\mathrm{before}$ and $k^\mathrm{after}$, and that did not yet exist in the common ancestor (Definition~\ref{def:common-ancestor}).
 
-\begin{enumerate}
-\item $o_r$ is applied before $o_s$ in $H$. Thus, at the time when $o_s$ is applied, $o_r$ has already been applied. When applying $o_s$, since $o_r$ has a lesser operation ID, the rule $\textsc{Insert}_1$ applies with $\mathit{next} = o_r.\mathit{id}$ at the latest, so the insertion position of $o_s$ must appear before $o_r$. It is not possible for $\textsc{Insert}_2$ to skip past $o_r$.
-\item $o_s$ is applied before $o_r$ in $H$. Thus, at the time when $o_r$ is applied, $o_s$ and any insertions causally prior to $o_s$ in the same insertion interval have already been applied.
-\end{enumerate}
+Take a cursor that differs from $k^\mathrm{before}$: the list element it refers to was inserted by a prior operation, whose cursor in turn refers to another prior operation, and so on. Following this chain of cursors for a finite number of steps leads to an operation $o_\mathrm{first}$ whose cursor refers to $k^\mathrm{before}$ (since an insertion operation always inserts at a position after the cursor).
 
-In both cases, the insertion position of $o_r$ appears after the insertion position of $o_s$. Since the argument applies to all pairs of concurrent operations $o_r, o_s$ in $H$, we deduce that the final order of elements in the list depends only on the operation IDs but not the order of application, which shows that concurrent insertions to the same list are commutative.
+Note that all of the operations in this chain are causally dependent on $o_\mathrm{first}$, and so they must have a Lamport timestamp greater than $o_\mathrm{first}$. Thus, we can apply the same argument as in Lemma~\ref{lem:insert-conflict}: if $\textsc{Insert}_2$ skips over the list element inserted by $o_\mathrm{first}$, it will also skip over all of the list elements that are causally dependent on it; if $\textsc{Insert}_1$ inserts a new element before $o_\mathrm{first}$, it is also inserted before the chain of operations that is based on it.
+
+Therefore, the order of $o_r$ and $o_s$ in the final list is determined by the Lamport timestamps of the first insertions into the insertion interval after their common ancestor, in the chains of cursor references of the two operations. Since the argument above applies to all pairs of concurrent operations $o_r, o_s$ in $H$, we deduce that the final order of elements in the list depends only on the operation IDs but not the order of application, which shows that concurrent insertions to the same list are commutative.
 \end{proof}
 
 %%%%%%%%%%%% TODO work in progress here %%%%%%%%%%%%%%%%%%%%%
-
-\begin{lemma}\label{lem:insert-commute}
-Concurrent insertions into the same list are commutative.
-\end{lemma}
-
-\begin{proof}
-Let $\mathit{op}_1$ and $\mathit{op}_2$ be two concurrent insertion operations with a common ancestor $A_\mathit{anc}$. Let $k_1^\mathit{before}$ and $k_2^\mathit{before}$ be the list elements in $A_\mathit{anc}$ that most closely precede the insertion position of $\mathit{op}_1$ and $\mathit{op}_2$ respectively, and let $k_1^\mathit{after}$ and $k_2^\mathit{after}$ be the list elements in $A_\mathit{anc}$ most closely preceded by the insertion position of $\mathit{op}_1$ and $\mathit{op}_2$ respectively.
-
-By Lemma~\ref{lem:insert-between}, either $k_1^\mathit{before} = k_2^\mathit{before} \wedge k_1^\mathit{after} = k_2^\mathit{after}$ (i.e. $\mathit{op}_1$ and $\mathit{op}_2$ are inserting into the same interval of list elements), or $k_1^\mathit{before} \not= k_2^\mathit{before} \wedge k_1^\mathit{after} \not= k_2^\mathit{after}$ (i.e. the operations are inserting into disjoint intervals of list elements). In the latter case, the two operations are trivially commutative, as they affect different parts of the list, and by Lemma~\ref{lem:insert-between} they do not affect parts of the list outside of their respective ranges.
-
-For the rest of this proof, consider the case of $k^\mathit{before} = k_1^\mathit{before} = k_2^\mathit{before}$ and $k^\mathit{after} = k_1^\mathit{after} = k_2^\mathit{after}$. We need to show that 
-\end{proof}
 
 \begin{lemma}\label{lem:delete-commute}
 Deletion is commutative with respect to concurrent operations.
@@ -1035,41 +1038,6 @@ The first kind of operation that can modify the same $A(\mathit{id})$ is a $\mat
 We showed that an $\mathsf{insert}(\mathit{id}, \placeholder, \placeholder)$ operation can only occur prior to $\mathsf{delete}(\mathit{id})$. Thus, the only other kind of operation that can depend on or modify $A(\mathit{id})$ is an $\mathsf{insert}(\placeholder, \mathit{id}, \placeholder)$ operation, or a recursive call to the $\mathrm{apply}$ function that uses such an operation internally. Note that when applying such an $\mathsf{insert}$ operation, the queries for $A(\mathit{prev})$ ignore the $\mathit{value}$ element of the tuple and leave it unchanged, and only examine and modify the $\mathit{next}$ element of the tuple. By contrast, applying $\mathsf{delete}(\mathit{id})$ modifies only the $\mathit{value}$ element of $A(\mathit{id})$, and leaves the $\mathit{next}$ element unchanged.
 
 Thus, if $o_{n+1}=\mathsf{delete}(\mathit{id})$ is inserted at any causally ready point in a history, the final state does not depend on the insertion point, because the inserted operation does not interact with any prior or following operations.
-
-\subsubsection{Commutativity of insertion}
-
-Now consider the case that $o_{n+1}=\mathsf{insert}(\mathit{id}, \mathit{prev}, v)$. The Lamport timestamp $\mathit{id}$ is freshly generated by the peer on which the edit was performed. Let $p$ by the peer on which $o_{n+1}$ was generated, let $A_p$ be the state of $p$ immediately before $o_{n+1}$ was applied, and let $A_p'$ be the state of $p$ immediately after $o_{n+1}$ was applied.
-
-By the definition of Lamport timestamps, $\mathit{id}$ is the greatest timestamp in $A_p'$, and greater than any timestamp occurring in $A_p$. Therefore, in the state update $A_p' = \mathrm{apply}(A_p, \mathsf{insert}(\mathit{id}, \mathit{prev}, v)),$ the non-recursive case ($n < \mathit{id}$) must apply. Therefore we have:
-\begin{align*}
-A_p' =\; & A_p[\,\mathit{prev} \mapsto (v_\mathit{prev}, \mathit{id}),\; \mathit{id} \mapsto (v, \mathit{next})\,] \\
-\text{where}\quad & A_p(\mathit{prev}) = (v_\mathit{prev}, \mathit{next}) \\
-& \mathit{prev} < \mathit{id} \quad\text{and}\quad \mathit{next} < \mathit{id}.
-\end{align*}
-
-The rules that modify a peer's state never remove an ID (i.e.\ the domain of the partial function $A$ monotonically grows as operations are applied). Thus, when $o_{n+1}$ is applied at another peer $q$ at any causally ready time in its history, $A_q(\mathit{prev})$ and $A_q(\mathit{next})$ must be defined in the state $A_q$, or $\mathit{next} = \mathsf{tail}$.
-
-Note that the linked list structure is only modified by applying $\mathsf{insert}$ operations ($\mathsf{delete}$ operations modify values, but not the order of items in the list). Causal ordering requires $o_{n+1}$ to be applied after any operation that happened before, and before any operation that happened causally later, so we need only consider all possible orderings of $o_{n+1}$ with respect to other concurrent $\mathsf{insert}$ operations.
-
-Moreover, the list structure is only modified by inserting a new element between two existing, adjacent elements. When $o_{n+1}$ is applied at peer $q$, the elements identified by $\mathit{prev}$ and $\mathit{next}$ are not necessarily adjacent in $A_q$, but we know that they must still be in the same order. According to the observation above, we also know that any other ID $\mathit{id}'$ inserted between those elements must have $\mathit{prev} < \mathit{id}'$ and $\mathit{next} < \mathit{id}'$.
-
-By the induction hypothesis, let $H_1$ and $H_2$ be causal histories of operations $o_1 \dots o_n$ which result in the same final state when applied. When $o_{n+1}$ is inserted into either of these histories, causality demands that list elements $\mathit{prev}$ and $\mathit{next}$ were already inserted at some point in the history prior to $o_{n+1}$. When $o_{n+1}$ is applied, the $\mathrm{apply}(\placeholder, \mathsf{insert}(\mathit{id}, \mathit{prev}, v))$ rule starts iterating at $\mathit{prev}$ and skips over any elements with an ID greater than $\mathit{id}$. Since $\mathit{next} < \mathit{id}$, the recursion never continues beyond $\mathit{next}$. Thus, the $\mathrm{apply}$ rule is guaranteed to insert $\mathit{id}$ at some position between $\mathit{prev}$ and $\mathit{next}$.
-
-Therefore, we need only consider insertions that are concurrent to $o_{n+1}$ and that insert at some position between $\mathit{prev}$ and $\mathit{next}$. Let $H_c$ be a history of operations, derived from either $H_1$ or $H_2$ by selecting only $\mathsf{insert}$ operations that are concurrent with $o_{n+1}$ and that insert at a position within the interval from $\mathit{prev}$ to $\mathit{next}$. By the induction hypothesis, all possible sub-histories $H_c$ result in the same final order of list elements within that interval. The operations in $H_c$ do not affect (and are not affected by) the list order outside of that interval, so we can consider $H_c$ in isolation.
-
-Let $[\mathit{id}_1, \dots, \mathit{id}_k]$ be the Lamport timestamps of the list elements in the interval between $\mathit{prev}$ and $\mathit{next}$, in the list order unambiguously defined by $H_c$. We need to show that regardless at what position in $H_c$ we insert the operation $o_{n+1}$, the outcome is the same sequence of list elements $[\mathit{id}_1, \dots, \mathit{id}_m, \mathit{id}, \mathit{id}_{m+1}, \dots, \mathit{id}_k]$, where $\mathit{id}$ is the Lamport timestamp of $o_{n+1}$.
-
-Since $\mathsf{insert}$ operations only add a new element between two existing, adjacent elements, it is sufficient to show that regardless where $o_{n+1}$ is inserted to $H_c$, the set of list elements $\{\mathit{id}_1, \dots, \mathit{id}_m\}$ that appear before $\mathit{id}$ in the final order is the same.
-
-Note that the $\mathrm{apply}$ rule ensures that after $\mathit{id}$ is inserted, all list elements between $\mathit{prev}$ and the insertion point have an ID greater than $\mathit{id}$, and the list element following the insertion point has an ID less than $\mathit{id}$. Further note that by the definition of Lamport timestamps, any operation that causally depends on an operation $o_i$ must have a greater ID than $o_i$.
-
-Let the set $T_\mathit{left} = \{\mathit{id}_i \mid \mathsf{insert}(\mathit{id}_i, \mathit{prev}, \placeholder) \in H_c\}$ contain the IDs of all operations in $H_c$ that use $\mathit{prev}$ as their reference position. Any history consisting only of these operations, in any order, results in the same final list order, namely in order of descending Lamport timestamp (TODO prove this in a lemma, it might not be obvious). Since Lamport timestamps are totally ordered, this list order is deterministic and unique. $\mathit{id}$ has a deterministic position within this order.
-
-Any operation $o_i$ in $H_c$ that uses a different list element (not $\mathit{prev}$) as its reference position appears at some position after its reference element in the final list order, and has a Lamport timestamp greater than its reference element. If the reference element appears after $o_{n+1}$ in the final order, $o_i$ also appears after $o_{n+1}$, regardless of the order in which operations are applied.
-
-If the reference element appears before $o_{n+1}$ in the final order, that means the timestamp of the reference element is greater than $\mathit{id}$, and so the timestamp of $o_i$ is also greater than $\mathit{id}$. If $o_{n+1}$ appears after $o_i$ in the history, then the apply rule for $o_{n+1}$ skips over both $o_i$ and the reference element. If $o_i$ appears after $o_{n+1}$ in the history, the apply rule for $o_i$ does not skip over the list element for $o_{n+1}$, again because the timestamp for $o_i$ is greater than $\mathit{id}$. Either way, if the reference element appears before $o_{n+1}$ in the final order, so does $o_i$, regardless of the order in which operations are applied.
-
-TODO that last bit of the argument is a bit hand-wavy, need to make it more precise. But I think the general approach is ok. That completes the induction step, and thus the proof.
 
 \fi % proofdraft
 \end{document}
