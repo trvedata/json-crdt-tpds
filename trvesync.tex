@@ -374,8 +374,9 @@ A few features of this language deliberately differ from most mainstream program
 
 \begin{prooftree}
 \AxiomC{$A_p,\, \mathit{expr} \evalto \mathsf{cursor}(\langle k_1, \dots, k_{n-1} \rangle,\, k_n)$}
+\AxiomC{$k_n \not= \mathsf{head}$}
 \LeftLabel{\textsc{Get}}
-\UnaryInfC{$A_p,\, \mathit{expr}.\texttt{[}\mathit{key}\texttt{]} \evalto
+\BinaryInfC{$A_p,\, \mathit{expr}.\texttt{[}\mathit{key}\texttt{]} \evalto
     \mathsf{cursor}(\langle k_1, \dots, k_{n-1}, \mathsf{mapT}(k_n) \rangle,\, \mathit{key})$}
 \end{prooftree}
 
@@ -946,10 +947,10 @@ We can prove the theorem by induction over the length of history $n$.
 
 In order to prove the induction step, we examine the insertion of $o_{n+1}$ into $H_p$ and $H_q$. Each history can be split into a prefix, which is the minimal subsequence $\langle o_1, \dots, o_j \rangle$ such that $o_{n+1}.\mathit{deps} \subseteq \{o_1.\mathit{id}, \dots, o_j.\mathit{id}\}$, and a suffix, which is the remaining subsequence $\langle o_{j+1}, \dots, o_n \rangle$. The prefix contains all operations that causally precede $o_{n+1}$, and possibly some operations that are concurrent with $o_{n+1}$; the suffix contains only operations that are concurrent with $o_{n+1}$. The earliest position where $o_{n+1}$ can be inserted into the history is between the prefix and the suffix; the latest position is at the end of the suffix; or it could be inserted at any point within the suffix.
 
-We need to show that the effect on the document state is the same, regardless of the position at which $o_{n+1}$ is inserted, and regardless of whether it is inserted into $H_p$ or $H_q$. We do this by showing that $o_{n+1}$ is commutative with respect to all operations in the suffix, i.e. with respect to any operations that are concurrent to $o_{n+1}$. We demonstrate this commutativity case-by-case depending on the type of mutation in $o_{n+1}$: insertion in Lemma~\ref{lem:insert-reorder}, deletion in Lemma~\ref{lem:delete-commute}, and assignment in Lemma~\ref{lem:assign-commute}.
+We need to show that the effect on the document state is the same, regardless of the position at which $o_{n+1}$ is inserted, and regardless of whether it is inserted into $H_p$ or $H_q$. We do this in Lemma~\ref{lem:op-commute} by showing that $o_{n+1}$ is commutative with respect to all operations in the suffix, i.e. with respect to any operations that are concurrent to $o_{n+1}$.
 \end{proof}
 
-Before we can prove the commutativity of insertion, deletion and assignment, we must first define some more terms and prove some preliminary lemmas.
+Before we can prove the commutativity of operations, we must first define some more terms and prove some preliminary lemmas.
 
 \begin{definition}[appearing after]
 In the ordered list $\mathit{ctx}$, list element $k_j$ \emph{appears after} list element $k_1$ if there exists a (possibly empty) sequence of list elements $k_2, \dots, k_{j-1}$ such that for all $i$ with $1 \le i < j$, $\mathit{ctx}(\mathsf{next}(k_i)) = k_{i+1}$. Moreover, we say $k_j$ appears \emph{immediately after} $k_1$ if that sequence is empty, i.e. if $\mathit{ctx}(\mathsf{next}(k_1)) = k_j$.
@@ -1048,8 +1049,38 @@ Thus, the effect of applying $o_c$ before $o_d$ is the same as applying $o_d$ be
 \end{proof}
 
 \begin{lemma}\label{lem:assign-commute}
-Assignment is commutative with respect to concurrent operations.
+In a history $H$, an assignment operation is commutative with respect to concurrent operations.
 \end{lemma}
+
+\begin{proof}
+Given an assignment $o_a$ and any other concurrent operation $o_c$, we must show that the document state after applying both operations does not depend on the order in which $o_a$ and $o_c$ were applied.
+
+The rules \textsc{Assign}, \textsc{Empty-Map} and \textsc{Empty-List} define how an assignment operation $o_a$ is applied, depending on the value being assigned. All three rules first clear any causally prior state from the cursor at which the assignment is occurring; by Lemma~\ref{lem:delete-commute}, this clearing operation is commutative with concurrent operations, and leaves updates by concurrent operations untouched.
+
+The rules also add $o_a.\mathit{id}$ to the presence set identified by the cursor, and \textsc{Descend} adds $o_a.\mathit{id}$ to the presence sets on the path from the root of the document tree described by the cursor. These state changes are applied using the set union operator $\cup$, which is commutative.
+
+Finally, in the case where value assigned by $o_a$ is a primitive and the \textsc{Assign} rule applies, the mapping from operation ID to value is added to the register by the expression $\mathit{child}[\,\mathit{id} \mapsto \mathit{val}\,]$. If $o_c$ is not an assignment operation or if $o_a.\mathit{cursor} \not= o_c.\mathit{cursor}$, the operations are independent and thus trivially commutative.
+
+If $o_a$ and $o_c$ are assignments to the same cursor, we use the commutativity of updates to a partial function: $\mathit{child}[\,\mathit{id}_1 \mapsto \mathit{val}_1\,]\,[\,\mathit{id}_2 \mapsto \mathit{val}_2\,] = \mathit{child}[\,\mathit{id}_2 \mapsto \mathit{val}_2\,]\,[\,\mathit{id}_1 \mapsto \mathit{val}_1\,]$ provided that $\mathit{id}_1 \not= \mathit{id}_2$. Since operation IDs (Lamport timestamps) are unique, two concurrent assignments add two different keys to the mapping, and their order is immaterial.
+
+Thus, all parts of the process of applying $o_a$ have the same effect on the document state, regardless of whether $o_c$ is applied before or after $o_a$, so the operations commute.
+\end{proof}
+
+\begin{lemma}\label{lem:op-commute}
+Given an operation history $H=\langle o_1, \dots, o_n \rangle$ from a valid execution, a new operation $o_{n+1}$ from that execution can be inserted at any point in $H$ after $o_{n+1}.\mathit{deps}$ have been applied. For all histories $H'$ that can be constructed this way, the document state resulting from applying the operations in $H'$ in order is the same, and independent of the ordering of any concurrent operations in $H$.
+\end{lemma}
+
+\begin{proof}
+$H$ can be split into a prefix and a suffix, as described in the proof of Theorem~\ref{thm:convergence}. The suffix contains only operations that are concurrent with $o_{n+1}$, and we allow $o_{n+1}$ to be inserted at any point after the prefix. We then prove the lemma case-by-case, depending on the type of mutation in $o_{n+1}$. 
+
+If $o_{n+1}$ is a deletion, by Lemma~\ref{lem:delete-commute} it is commutative with all operations in the suffix, and so $o_{n+1}$ can be inserted at any point within, before, or after the suffix without changing its effect on the final document state. Similarly, if $o_{n+1}$ is an assignment, by Lemma~\ref{lem:assign-commute} it is commutative with all operations in the suffix.
+
+If $o_{n+1}$ is an insertion, let $o_c$ be any operation in the suffix, and consider the cases of $o_{n+1}$ being inserted before and after $o_c$ in the history. If $o_c$ is a deletion or assignment, it is commutative with $o_{n+1}$ by Lemma~\ref{lem:delete-commute} or Lemma~\ref{lem:assign-commute} respectively. If $o_c$ is an insertion into the same list as $o_{n+1}$, then by Lemma~\ref{lem:insert-reorder} the operations are commutative. If $o_c$ is an insertion into a different list in the document, its effect is independent from $o_{n+1}$ and so the two operations can be applied in any order.
+
+Thus, $o_{n+1}$ is commutative with respect to any concurrent operation in $H$. Therefore, $o_{n+1}$ can be inserted into $H$ at any point after its causal dependencies, and the effect on the final document state is independent of the position at which the operation is inserted.
+\end{proof}
+
+This completes the induction step in the proof of Theorem~\ref{thm:convergence}, and thus proves convergence of our datatype.
 
 \fi % includeappendix
 \end{document}
