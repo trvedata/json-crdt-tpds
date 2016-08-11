@@ -69,8 +69,7 @@ What these applications have in common is that the application state needs to be
 
 The simplest way to resolve conflicts is to discard some modifications when a conflict occurs, for example using a ``last writer wins'' policy. However, this approach is undesirable as it incurs data loss. An alternative is to let the user manually resolve the conflict, which is tedious and therefore should be avoided whenever possible.
 
-Current applications solve this problem with a range of ad-hoc and application-specific mechanisms. In this paper we present a general-purpose datatype that provides the full expressiveness of the JSON data model, and automatically merges any concurrent modifications without loss of information. We expect that implementations of this datatype will drastically simplify the development of collaborative and state-synchronizing applications for mobile devices.
-%TODO while it is technically true that we automatically merge conncurrent mods, we do this by introducing multi-valued registers which then require application specific solutions (and possibly user intervention). Can we convey this subtlety at this point?
+Current applications solve this problem with a range of ad-hoc and application-specific mechanisms. In this paper we present a general-purpose datatype that provides the full expressiveness of the JSON data model, and supports concurrent modifications without loss of information. As we shall see later, our approach typically supports the automatic merging of concurrent modifications into a JSON data structure. We introduce a single, general mechansim (a multi-value register) into our model to record conflicting updates to leaf nodes in the JSON data structure. This mechansim then provides a consistent basis on which applications can resolve any remaining conflicts through programmatic means, or via further user input.  We expect that implementations of this datatype will drastically simplify the development of collaborative and state-synchronizing applications for mobile devices.
 
 \subsection{JSON data model}
 
@@ -85,7 +84,7 @@ A JSON document is a tree containing two types of branch node:
 
 A child of a branch node can be either another branch node, or a leaf node. A leaf of the tree contains a primitive value (string, number, boolean, or null). We treat primitive values as immutable, but allow the value of a leaf node to be modified by treating it as a \emph{register} that can be assigned a new value.
 
-This model is sufficient to express the state of a wide range of applications. For example, a text document can be represented by a list of single-character strings; character-by-character edits are then expressed as insertions and deletions of list elements. In Section~\ref{sec:examples} we show further examples of using JSON to model application data.
+This model is sufficient to express the state of a wide range of applications. For example, a text document can be represented by a list of single-character strings; character-by-character edits are then expressed as insertions and deletions of list elements. In Section~\ref{sec:examples} we describe four more complex examples of using JSON to model application data.
 
 \subsection{Replication and conflict resolution}\label{sec:intro-replication}
 
@@ -93,7 +92,7 @@ We consider systems in which a full copy of the JSON document is replicated on s
 
 Our only requirement of the network is that messages sent by one replica are eventually delivered to all other replicas, by retrying if delivery fails. We assume the network may arbitrarily delay, reorder and duplicate messages.
 
-Our algorithm works client-side and does not depend on any server to transform or process messages. This approach allows messages to be delivered via a peer-to-peer network and a secure messaging protocol with end-to-end encryption~\cite{Unger:2015kg}, although the details of the network implementation and cryptographic protocols are outside of the scope of this paper.
+Our algorithm works client-side and does not depend on any server to transform or process messages. This approach allows messages to be delivered via a peer-to-peer network as well as a secure messaging protocol with end-to-end encryption~\cite{Unger:2015kg}. The details of the network implementation and cryptographic protocols are outside of the scope of this paper.
 
 In Section~\ref{sec:semantics} we define formal semantics describing how conflicts are resolved when a JSON document is concurrently modified on different devices. Our design is based on three simple principles:
 \begin{enumerate}
@@ -150,23 +149,28 @@ In this section we informally introduce our approach to collaborative editing of
 
 \subsection{Concurrent editing examples}\label{sec:examples}
 
-\begin{figure}
+\begin{figure*}
 \centering
-\begin{tikzpicture}[auto]
-\node (start)  at (2,3) {\verb|{"key":"A"}|};
-\node (left1)  at (0,1.5) {\verb|{"key":"B"}|};
-\node (right1) at (4,1.5) {\verb|{"key":"C"}|};
-\node (left2)  at (0,0) {\verb|{"key":{"B","C"}}|};
-\node (right2) at (4,0) {\verb|{"key":{"B","C"}}|};
-\draw [thick,->] (start) to node [left,inner sep=8pt] {\footnotesize doc[``key''] := ``B'';} (left1);
-\draw [thick,->] (start) to node [right,inner sep=8pt] {\footnotesize doc[``key''] := ``C'';} (right1);
-\draw [thick,->] (left1) to node [left] {\footnotesize yield;} (left2);
-\draw [thick,->] (left1) to (right2);
-\draw [thick,->] (right1) to (left2);
-\draw [thick,->] (right1) to node [right] {\footnotesize yield;} (right2);
+\begin{tikzpicture}[auto,scale=0.8]
+\path [draw,dotted] (4,-0.5) -- (4,6.5);
+\node (leftR)  at (0,6) {Replica $p$:};
+\node (rightR) at (8,6) {Replica $q$:};
+\node (left0)  at (0,5) [rectangle,draw] {\{``key'': ``A''\}};
+\node (right0) at (8,5) [rectangle,draw] {\{``key'': ``A''\}};
+\node (left1)  at (0,3) [rectangle,draw] {\{``key'': ``B''\}};
+\node (right1) at (8,3) [rectangle,draw] {\{``key'': ``C''\}};
+\node (left2)  at (0,0) [rectangle,draw] {\{``key'': \{``B'', ``C''\}\}};
+\node (right2) at (8,0) [rectangle,draw] {\{``key'': \{``B'', ``C''\}\}};
+\node (comms)  at (4,1.6) [text=blue] {\footnotesize network communication};
+\draw [thick,->] (left0) to node [left,inner sep=8pt] {doc[``key''] := ``B'';} (left1);
+\draw [thick,->] (right0) to node [right,inner sep=8pt] {doc[``key''] := ``C'';} (right1);
+\draw [thick,->] (left1) -- (left2);
+\draw [thick,dashed,blue,->] (left1.south)  to [out=270,in=135] (right2.north west);
+\draw [thick,dashed,blue,->] (right1.south) to [out=270,in=45]  (left2.north east);
+\draw [thick,->] (right1) -- (right2);
 \end{tikzpicture}
 \caption{Concurrent assignment to a register.}\label{fig:register-assign}
-\end{figure}
+\end{figure*}
 
 To illustrate some of the subtleties that arise when JSON documents are concurrently modified, we present some examples.
 
@@ -174,29 +178,32 @@ Our first example is shown in Figure~\ref{fig:register-assign}. In a document th
 
 \begin{figure*}
 \centering
-\begin{tikzpicture}[auto]
-\node (start) at (4,4) {\verb|{"colors": {"blue": "#0000ff"}}|};
-\node [matrix] (left1) at (0,2) {
-    \node {\verb|{"colors": {"blue": "#0000ff",|}; \\
-    \node {\verb|"red": "#ff0000"}}|}; \\
+\begin{tikzpicture}[auto,scale=0.8]
+\path [draw,dotted] (4,-1) -- (4,7.5);
+\node (left0)  at (0,7) [rectangle,draw] {\{``colors'': \{``blue'': ``\#0000ff''\}\}};
+\node (right0) at (8,7) [rectangle,draw] {\{``colors'': \{``blue'': ``\#0000ff''\}\}};
+\node [matrix] (left1) at (0,4) [rectangle,draw] {
+    \node {\{``colors'': \{``blue'': ``\#0000ff'',}; \\
+    \node {``red'': ``\#ff0000''\}\}}; \\
 };
-\node (right1) at (8,3) {\verb|{"colors": {}}|};
-\node (right2) at (8,1.5) {\verb|{"colors": {"green": "#00ff00"}}|};
-\node [matrix] (left2) at (0,0) {
-    \node {\verb|{"colors": {"red": "#ff0000",|}; \\
-    \node {\verb|"green": "#00ff00"}}|}; \\
+\node (right1) at (8,5) [rectangle,draw] {\{``colors'': \{\}\}};
+\node (right2) at (8,3) [rectangle,draw] {\{``colors'': \{``green'': ``\#00ff00''\}\}};
+\node [matrix] (left2) at (0,0) [rectangle,draw] {
+    \node {\{``colors'': \{``red'': ``\#ff0000'',}; \\
+    \node {``green'': ``\#00ff00''\}\}}; \\
 };
-\node [matrix] (right3) at (8,0) {
-    \node {\verb|{"colors": {"red": "#ff0000",|}; \\
-    \node {\verb|"green": "#00ff00"}}|}; \\
+\node [matrix] (right3) at (8,0) [rectangle,draw] {
+    \node {\{``colors'': \{``red'': ``\#ff0000'',}; \\
+    \node {``green'': ``\#00ff00''\}\}}; \\
 };
-\draw [thick,->] (start)  to node [left, inner xsep=12pt] {\footnotesize doc[``colors''][``red''] := ``\#ff0000'';} (left1);
-\draw [thick,->] (start)  to node [right,inner xsep=18pt] {\footnotesize doc[``colors''] = \{\};} (right1);
-\draw [thick,->] (right1) to node [right] {\footnotesize doc[``colors''][``green''] := ``\#00ff00'';} (right2);
-\draw [thick,->] (left1)  to node [left]  {\footnotesize yield;} (left2);
-\draw [thick,->] (right2) to node [right] {\footnotesize yield;} (right3);
-\draw [thick,->] (left1)  to (right3);
-\draw [thick,->] (right2) to (left2);
+\node (comms) at (4,2.1) [text=blue] {\footnotesize network communication};
+\draw [thick,->] (left0)  to node [left]  {doc[``colors''][``red''] := ``\#ff0000'';} (left1);
+\draw [thick,->] (right0) to node [right] {doc[``colors''] = \{\};} (right1);
+\draw [thick,->] (right1) to node [right] {doc[``colors''][``green''] := ``\#00ff00'';} (right2);
+\draw [thick,->] (left1)  to (left2);
+\draw [thick,->] (right2) to (right3);
+\draw [thick,dashed,blue,->] (left1.south)  to [out=270,in=135] (right3.north west);
+\draw [thick,dashed,blue,->] (right2.south) to [out=270,in=45]  (left2.north east);
 \end{tikzpicture}
 \caption{Modifying the contents of a nested map while concurrently the entire map is overwritten.}\label{fig:map-remove}
 \end{figure*}
@@ -205,26 +212,29 @@ Another example is given in Figure~\ref{fig:map-remove}. Here, one replica adds 
 
 \begin{figure*}
 \centering
-\begin{tikzpicture}[auto]
-\node (start)  at (4,6.0) {\verb|{}|};
-\node (left1)  at (0,4.5) {\verb|{"buy":[]}|};
-\node (right1) at (8,4.5) {\verb|{"buy":[]}|};
-\node (left2)  at (0,3.0) {\verb|{"buy":["eggs"]}|};
-\node (left3)  at (0,1.5) {\verb|{"buy":["eggs","ham"]}|};
-\node (right2) at (8,3.0) {\verb|{"buy":["milk"]}|};
-\node (right3) at (8,1.5) {\verb|{"buy":["milk","flour"]}|};
-\node (left4)  at (0,0.0) {\verb|{"buy":["eggs","ham","milk","flour"]}|};
-\node (right4) at (8,0.0) {\verb|{"buy":["eggs","ham","milk","flour"]}|};
-\draw [thick,->] (start)  to node [left, inner xsep=18pt] {\footnotesize doc[``buy''] := [];} (left1);
-\draw [thick,->] (start)  to node [right,inner xsep=18pt] {\footnotesize doc[``buy''] := [];} (right1);
-\draw [thick,->] (left1)  to node [left]  {\footnotesize doc[``buy''].iter.insert(``eggs'');} (left2);
-\draw [thick,->] (right1) to node [right] {\footnotesize doc[``buy''].iter.insert(``milk'');} (right2);
-\draw [thick,->] (left2)  to node [left]  {\footnotesize eggs.insert(``ham'');} (left3);
-\draw [thick,->] (right2) to node [right] {\footnotesize milk.insert(``flour'');} (right3);
-\draw [thick,->] (left3)  to node [left]  {\footnotesize yield;} (left4);
-\draw [thick,->] (right3) to node [right] {\footnotesize yield;} (right4);
-\draw [thick,->] (left3)  to (right4);
-\draw [thick,->] (right3) to (left4);
+\begin{tikzpicture}[auto,scale=0.8]
+\path [draw,dotted] (5,-0.5) -- (5,8.5);
+\node (left0)  at  (0,8) [rectangle,draw] {\{\}};
+\node (right0) at (10,8) [rectangle,draw] {\{\}};
+\node (left1)  at  (0,6) [rectangle,draw] {\{``buy'': []\}};
+\node (right1) at (10,6) [rectangle,draw] {\{``buy'': []\}};
+\node (left2)  at  (0,4) [rectangle,draw] {\{``buy'': [``eggs'']\}};
+\node (left3)  at  (0,2) [rectangle,draw] {\{``buy'': [``eggs'', ``ham'']\}};
+\node (right2) at (10,4) [rectangle,draw] {\{``buy'': [``milk'']\}};
+\node (right3) at (10,2) [rectangle,draw] {\{``buy'': [``milk'', ``flour'']\}};
+\node (left4)  at  (0,0) [rectangle,draw] {\{``buy'': [``eggs'', ``ham'', ``milk'', ``flour'']\}};
+\node (right4) at (10,0) [rectangle,draw] {\{``buy'': [``eggs'', ``ham'', ``milk'', ``flour'']\}};
+\node (comms)  at  (5,1.4) [text=blue] {\footnotesize network communication};
+\draw [thick,->] (left0)  to node [left]  {doc[``buy''] := [];} (left1);
+\draw [thick,->] (right0) to node [right] {doc[``buy''] := [];} (right1);
+\draw [thick,->] (left1)  to node [left]  {doc[``buy''].iter.insert(``eggs'');} (left2);
+\draw [thick,->] (right1) to node [right] {doc[``buy''].iter.insert(``milk'');} (right2);
+\draw [thick,->] (left2)  to node [left]  {eggs.insert(``ham'');} (left3);
+\draw [thick,->] (right2) to node [right] {milk.insert(``flour'');} (right3);
+\draw [thick,->] (left3)  to (left4);
+\draw [thick,->] (right3) to (right4);
+\draw [thick,dashed,blue,->] (left3.south)  to [out=270,in=135] (right4.north west);
+\draw [thick,dashed,blue,->] (right3.south) to [out=270,in=45]  (left4.north east);
 \end{tikzpicture}
 \caption{Two replicas concurrently create ordered lists under the same map key.}\label{fig:two-lists}
 \end{figure*}
@@ -233,18 +243,32 @@ The example in Figure~\ref{fig:two-lists} shows two replicas concurrently creati
 
 \begin{figure*}
 \centering
-\begin{tikzpicture}[auto]
-\node (start)  at (4,3.0) {\verb|{"todo": [{"title": "buy milk", "done": false}]}|};
-\node (left1)  at (0,1.5) {\verb|{"todo": []}|};
-\node (right1) at (8,1.5) {\verb|{"todo": [{"title": "buy milk", "done": true}]}|};
-\node (left2)  at (0,0.0) {\verb|{"todo": [{"done": true}]}|};
-\node (right2) at (8,0.0) {\verb|{"todo": [{"done": true}]}|};
-\draw [thick,->] (start)  to node [left, inner xsep=12pt] {\footnotesize doc[``todo''].iter.next.delete;} (left1);
-\draw [thick,->] (start)  to node [right,inner xsep=12pt] {\footnotesize doc[``todo''].iter.next[``done''] := true;} (right1);
-\draw [thick,->] (left1)  to node [left]  {\footnotesize yield;} (left2);
-\draw [thick,->] (right1) to node [right] {\footnotesize yield;} (right2);
-\draw [thick,->] (left1)  to (right2);
-\draw [thick,->] (right1) to (left2);
+\begin{tikzpicture}[auto,scale=0.8]
+\path [draw,dotted] (4,-0.5) -- (4,8);
+\node (leftR)  at (0,7.5) {Replica $p$:};
+\node (rightR) at (8,7.5) {Replica $q$:};
+\node [matrix] (left0) at (0,6) [rectangle,draw] {
+    \node {\{``todo'': [\{``title'': ``buy milk'',}; \\
+    \node {``done'': false\}]\}}; \\
+};
+\node [matrix] (right0) at (8,6) [rectangle,draw] {
+    \node {\{``todo'': [\{``title'': ``buy milk'',}; \\
+    \node {``done'': false\}]\}}; \\
+};
+\node (left1)  at (0,3) [rectangle,draw] {\{``todo'': []\}};
+\node [matrix] (right1) at (8,3) [rectangle,draw] {
+    \node {\{``todo'': [\{``title'': ``buy milk'',}; \\
+    \node {``done'': true\}]\}}; \\
+};
+\node (left2)  at (0,0) [rectangle,draw] {\{``todo'': [\{``done'': true\}]\}};
+\node (right2) at (8,0) [rectangle,draw] {\{``todo'': [\{``done'': true\}]\}};
+\node (comms)  at (4,1.6) [text=blue] {\footnotesize network communication};
+\draw [thick,->] (left0)  to node [left]  {doc[``todo''].iter.next.delete;} (left1);
+\draw [thick,->] (right0) to node [right] {doc[``todo''].iter.next[``done''] := true;} (right1);
+\draw [thick,->] (left1)  to (left2);
+\draw [thick,->] (right1) to (right2);
+\draw [thick,dashed,blue,->] (left1.south)  to [out=270,in=135] (right2.north west);
+\draw [thick,dashed,blue,->] (right1.south) to [out=270,in=45]  (left2.north east);
 \end{tikzpicture}
 \caption{One replica removes a list element, while another concurrently updates its contents.}\label{fig:todo-item}
 \end{figure*}
