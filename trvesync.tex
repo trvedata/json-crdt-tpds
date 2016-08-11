@@ -8,14 +8,21 @@
 \usepackage{hyperref}
 \usepackage[nocompress]{cite}
 
+% Theorem environments
+\usepackage{amsthm}
+\newtheorem{definition}{Definition}
+\newtheorem{theorem}{Theorem}
+\newtheorem{lemma}[theorem]{Lemma}
+\newtheorem*{convergence-thm}{Theorem}
+
 % Diagrams
 \usepackage{tikz}
 \usetikzlibrary{arrows}
 
 \hyphenation{da-ta-cen-ter da-ta-cen-ters net-works time-stamp}
 
-\newif\ifproofdraft
-\proofdrafttrue
+\newif\ifincludeappendix
+\includeappendixtrue
 
 \newcommand{\evalto}{\;\Longrightarrow\;}
 
@@ -38,29 +45,32 @@
 \begin{document}
 \sloppy
 \title{A Conflict-Free Replicated JSON Datatype}
-\author{Author 1 and Author 2
-\thanks{Author affiliation goes here.}}
+\author{Martin Kleppmann and Alastair R. Beresford
+\thanks{M. Kleppmann and A.R. Beresford are with the University of Cambridge Computer Laboratory, Cambridge, UK.\protect\\Email: \url{mk428@cl.cam.ac.uk}, \url{arb33@cl.cam.ac.uk}.}}
 
 \IEEEtitleabstractindextext{%
 \begin{abstract}
 % abstract word limit: 100-200 words
-Many applications model their data in a general-purpose storage format such as JSON. This data structure is modified by the application as a result of user input. Such modifications are well understood if performed sequentially on a single copy of the data, but the semantics is unclear if the data is replicated and modified concurrently on multiple devices. In this paper we present an algorithm and formal semantics for a JSON data structure that automatically resolves concurrent modifications such that no updates are lost, and such that all replicas converge towards the same state. It supports arbitrarily nested list and map types, which can be modified by insertion, deletion and assignment. The algorithm performs all merging client-side and does not depend on ordering guarantees from the network, allowing it to be deployed in peer-to-peer networks and in messaging systems with end-to-end encryption.
+Many applications model their data in a general-purpose storage format such as JSON. This data structure is modified by the application as a result of user input. Such modifications are well understood if performed sequentially on a single copy of the data, but if the data is replicated and modified concurrently on multiple devices, it is unclear what the semantics should be. In this paper we present an algorithm and formal semantics for a JSON data structure that automatically resolves concurrent modifications such that no updates are lost, and such that all replicas converge towards the same state. It supports arbitrarily nested list and map types, which can be modified by insertion, deletion and assignment. The algorithm performs all merging client-side and does not depend on ordering guarantees from the network, allowing it to be deployed in peer-to-peer networks, and in messaging systems with end-to-end encryption.
+%TODO mention here that this is particularly useful for mobile systems which suffer periods of disconnectivity and also use multiple interfaces (which messes with ordering)?
 \end{abstract}
 
 \begin{IEEEkeywords}
-CRDTs, Collaborative Editing, P2P, JSON, Optimistic Replication, Semantics, Eventual Consistency.
+CRDTs, Collaborative Editing, P2P, JSON, Optimistic Replication, Operational Semantics, Eventual Consistency.
 \end{IEEEkeywords}}
 \maketitle
 
 \IEEEraisesectionheading{\section{Introduction}\label{sec:introduction}}
 
-\IEEEPARstart{U}{sers} of mobile devices, such as smartphones, expect applications to continue working while the device is offline or has poor network connectivity, and to synchronize its state with the user's other devices when the network is available. Examples of such applications include calendars, address books, note-taking tools, to-do lists, and password managers. Moreover, many people want to collaborate with others on text documents, spreadsheets, presentations, graphics, and other kinds of document.
+\IEEEPARstart{U}{sers} of mobile devices, such as smartphones, expect applications to continue working while the device is offline or has poor network connectivity, and to synchronize its state with the user's other devices when the network is available. Examples of such applications include calendars, address books, note-taking tools, to-do lists, and password managers. Moreover, many people want to collaborate with others on text documents, spreadsheets, presentations, graphics, and other kinds of documents.
+%TODO This seems like a false dichotomy to me: some text documents are for a single user, replicated across their device, and calendars are often collaborative...
 
-What these applications have in common is that the application state needs to be replicated to several devices, each of which may modify the state locally. Requiring serializability, the traditional approach to concurrency control, would cause the application to become unusable at times of poor network connectivity~\cite{Davidson:1985hv}. If we require that applications work regardless of the network, we must assume that users can make arbitrary modifications concurrently on different devices, and that any resulting conflicts must be resolved.
+What these applications have in common is that the application state needs to be replicated to several devices, each of which may modify the state locally. The traditional approach to concurrency control, serializability, would cause the application to become unusable at times of poor network connectivity~\cite{Davidson:1985hv}. If we require that applications work regardless of network availability, we must assume that users can make arbitrary modifications concurrently on different devices, and that any resulting conflicts must be resolved.
 
-The simplest way of resolving conflicts is to discard some document modifications if a conflict occurred, for example using a ``last writer wins'' policy. However, this approach is undesirable as it incurs data loss. An alternative is to let the user manually resolve the conflict, which is tedious in case of modifications that could be merged automatically.
+The simplest way to resolve conflicts is to discard some modifications when a conflict occurs, for example using a ``last writer wins'' policy. However, this approach is undesirable as it incurs data loss. An alternative is to let the user manually resolve the conflict, which is tedious and therefore should be avoided whenever possible.
 
 Current applications solve this problem with a range of ad-hoc and application-specific mechanisms. In this paper we present a general-purpose datatype that provides the full expressiveness of the JSON data model, and automatically merges any concurrent modifications without loss of information. We expect that implementations of this datatype will drastically simplify the development of collaborative and state-synchronizing applications for mobile devices.
+%TODO while it is technically true that we automatically merge conncurrent mods, we do this by introducing multi-valued registers which then require application specific solutions (and possibly user intervention). Can we convey this subtlety at this point?
 
 \subsection{JSON data model}
 
@@ -85,7 +95,7 @@ Our only requirement of the network is that messages sent by one replica are eve
 
 Our algorithm works client-side and does not depend on any server to transform or process messages. This approach allows messages to be delivered via a peer-to-peer network and a secure messaging protocol with end-to-end encryption~\cite{Unger:2015kg}, although the details of the network implementation and cryptographic protocols are outside of the scope of this paper.
 
-In Section~\ref{sec:semantics} we give a formal semantics that describes how conflicts are resolved when a JSON document is concurrently modified on different devices. Our design is based on three simple principles:
+In Section~\ref{sec:semantics} we define formal semantics describing how conflicts are resolved when a JSON document is concurrently modified on different devices. Our design is based on three simple principles:
 \begin{enumerate}
 \item All replicas of the data structure should automatically converge towards the same state.
 \item No user input should be lost due to concurrent modifications.
@@ -96,7 +106,8 @@ In Section~\ref{sec:semantics} we give a formal semantics that describes how con
 
 Our main contribution in this work is to define an algorithm and formal semantics for collaborative, concurrent editing of JSON data structures with automatic conflict resolution. Although similar algorithms have previously been defined for lists, maps and registers individually (see Section~\ref{sec:related}), to our knowledge this paper is the first to integrate all of these structures into an arbitrarily composable datatype.
 
-Composing maps and lists into arbitrarily nested structures opens up subtle challenges that do not arise in flat structures, due to the possibility of concurrent edits at different levels of the tree. We illustrate some of those challenges by example in Section~\ref{sec:examples}. On the other hand, nested structures are an important requirement for many applications; by providing an algorithm that handles conflict resolution on such structures, we hope to simplify the the development of applications that use optimistic replication.
+Composing maps and lists into arbitrarily nested structures opens up subtle challenges that do not arise in flat structures, due to the possibility of concurrent edits at different levels of the tree. We illustrate some of those challenges by example in Section~\ref{sec:examples}. Nested structures are an important requirement for many applications.
+Consequently the long-term goal of our work is to simplify the development of applications that use optimistic replication by providing a general algorithm for conflict resolution whose details can largely be hidden inside an easy-to-use software library.
 
 \section{Related work}\label{sec:related}
 
@@ -104,7 +115,7 @@ In this section we discuss existing approaches to optimistic replication, collab
 
 \subsection{Operational transformation}\label{sec:related-ot}
 
-Algorithms based on \emph{operational transformation} (OT) have long been used for collaborative editing applications~\cite{Ellis:1989ue,Ressel:1996wx,Sun:1998vf,Nichols:1995fd}. Most of them treat a document as a single ordered list (of characters, for example) and do not support the nested tree structures that are required for many applications. Some algorithms generalize OT to editing XML documents~\cite{Davis:2002iv,Ignat:2003jy,Wang:2015vo}, which provides nesting of ordered lists, but these algorithms do not support key-value maps as defined in this paper (see Section~\ref{sec:json-xml}). The performance of OT algorithms degrades rapidly as the number of concurrent operations increases~\cite{Li:2006kd}.
+Algorithms based on \emph{operational transformation} (OT) have long been used for collaborative editing applications~\cite{Ellis:1989ue,Ressel:1996wx,Sun:1998vf,Nichols:1995fd}. Most of them treat a document as a single ordered list (of characters, for example) and do not support nested tree structures that are required by many applications. Some algorithms generalize OT to editing XML documents~\cite{Davis:2002iv,Ignat:2003jy,Wang:2015vo}, which provides nesting of ordered lists, but these algorithms do not support key-value maps as defined in this paper (see Section~\ref{sec:json-xml}). The performance of OT algorithms degrades rapidly as the number of concurrent operations increases~\cite{Li:2006kd}.
 
 Most deployed OT collaboration systems, including Google Docs~\cite{DayRichter:2010tt}, Etherpad~\cite{Etherpad:2011um}, Novell Vibe~\cite{Spiewak:2010vw} and Apache Wave (formerly Google Wave~\cite{Wang:2015vo}), rely on a single server to decide on a total ordering of operations~\cite{Lemonik:2016wh}, a design decision inherited from the Jupiter system~\cite{Nichols:1995fd}. This approach has the advantage of making the transformation functions simpler and less error-prone~\cite{Imine:2003ks}, but it does not meet our requirements, since we want to support peer-to-peer collaboration without requiring a single server.
 
@@ -114,7 +125,7 @@ The Google Realtime API~\cite{Google:2015vk} is to our knowledge the only implem
 
 \subsection{CRDTs}\label{sec:related-crdts}
 
-Conflict-free replicated datatypes (CRDTs) are a family of data structures that can be concurrently modified and that guarantee convergence of such concurrent updates. They work by attaching additional metadata to the data structure, and making modification operations commutative by construction. The JSON datatype described in this paper is a kind of CRDT.
+Conflict-free replicated datatypes (CRDTs) are a family of data structures that support concurrent modification and that guarantee convergence of such concurrent updates. They work by attaching additional metadata to the data structure, and making modification operations commutative by construction. The JSON datatype described in this paper is a kind of CRDT.
 
 CRDTs for registers, counters, maps and sets are widely known~\cite{Shapiro:2011un,Shapiro:2011wy}, and have been implemented in various deployed systems such as Riak~\cite{Brown:2014hs,Brown:2013wy}. For ordered lists, various algorithms have been proposed, including WOOT~\cite{Oster:2006wj}, RGA~\cite{Roh:2011dw}, Treedoc~\cite{Preguica:2009fz}, Logoot~\cite{Weiss:2010hx} and LSEQ~\cite{Nedelec:2013ky}. However, none of them support nesting: they assume that the elements of the CRDT map or list are primitive values, not another CRDT.
 
@@ -159,7 +170,7 @@ In this section we informally introduce our approach to collaborative editing of
 
 To illustrate some of the subtleties that arise when JSON documents are concurrently modified, we present some examples.
 
-Our first example is shown in Figure~\ref{fig:register-assign}. In a document that maps ``key'' to a register with value ``A'', one replica sets the value of the register to ``B'', while another concurrently sets it to ``C''. As the replicas subsequently exchange edits, they detect the conflict. Since we do not want to simply discard one of the edits, and the strings ``B'' and ``C'' cannot meaningfully be merged, the system must preserve both concurrent updates. This datatype is known as a \emph{multi-value register}: although a replica can only assign a single value to the register, reading the register may return a set of multiple values that were concurrently written. An implementation may keep metadata about the provenance of each value (who made the change, on which device, at what time) to assist users with manually resolving the conflict.
+Our first example is shown in Figure~\ref{fig:register-assign}. In a document that maps ``key'' to a register with value ``A'', one replica sets the value of the register to ``B'', while another concurrently sets it to ``C''. As the replicas subsequently exchange edits, they detect the conflict. Since we do not want to simply discard one of the edits, and the strings ``B'' and ``C'' cannot be meaningfully merged, the system must preserve both concurrent updates. This datatype is known as a \emph{multi-value register}: although a replica can only assign a single value to the register, reading the register may return a set of multiple values that were concurrently written. An implementation may keep metadata about the provenance of each value (who made the change, on which device, at what time) to assist users with manually resolving the conflict.
 
 \begin{figure*}
 \centering
@@ -248,7 +259,7 @@ The most common alternative to JSON is XML, and collaborative editing of XML doc
 
 JSON has two collection constructs that can be arbitrarily nested: maps for unordered key-value pairs, and lists for ordered sequences. In XML, the children of an element form an ordered sequence, while the attributes of an element are unordered key-value pairs. However, XML does not allow nested elements inside attributes -- the value of an attribute can only be a primitive datatype. Thus, XML supports maps within lists, but not lists within maps. In this regard, XML is less expressive than JSON: the example in Figure~\ref{fig:two-lists} cannot occur in XML.
 
-Some applications may attach map-like semantics to the children of an XML document, for example by interpreting the child element name as key. However, these semantics are not part of XML itself and would not be enforced by existing collaborative editing algorithms for XML. If multiple children with the same key are concurrently created, existing algorithms would create duplicate children with the same key rather than merging them like in Figure~\ref{fig:two-lists}.
+Some applications may attach map-like semantics to the children of an XML document, for example by interpreting the child element name as key. However, this key-value structure is not part of XML itself, and would not be enforced by existing collaborative editing algorithms for XML. If multiple children with the same key are concurrently created, existing algorithms would create duplicate children with the same key rather than merging them like in Figure~\ref{fig:two-lists}.
 
 \subsection{Document editing API}\label{sec:editing-api}
 
@@ -363,8 +374,9 @@ A few features of this language deliberately differ from most mainstream program
 
 \begin{prooftree}
 \AxiomC{$A_p,\, \mathit{expr} \evalto \mathsf{cursor}(\langle k_1, \dots, k_{n-1} \rangle,\, k_n)$}
+\AxiomC{$k_n \not= \mathsf{head}$}
 \LeftLabel{\textsc{Get}}
-\UnaryInfC{$A_p,\, \mathit{expr}.\texttt{[}\mathit{key}\texttt{]} \evalto
+\BinaryInfC{$A_p,\, \mathit{expr}.\texttt{[}\mathit{key}\texttt{]} \evalto
     \mathsf{cursor}(\langle k_1, \dots, k_{n-1}, \mathsf{mapT}(k_n) \rangle,\, \mathit{key})$}
 \end{prooftree}
 
@@ -462,7 +474,7 @@ A few features of this language deliberately differ from most mainstream program
 \caption{Rules for evaluating expressions.}\label{fig:expr-rules}
 \end{figure*}
 
-The state of replica $p$ is described by $A_p$, a finite partial function. The semantics of the command language are defined by rules that inspect and modify this local state $A_p$, and which are independent of the state $A_q$ of any other replica $q$. The only communication between replicas occurs in the evaluation of the \textsf{yield} command, which we discuss later. For now, we concentrate on the execution of commands at a single replica $p$.
+The state of replica $p$ is described by $A_p$, a finite partial function. The evaluation rules of the command language inspect and modify this local state $A_p$, and they are independent of the state $A_q$ of any other replica $q$. The only communication between replicas occurs in the evaluation of the \textsf{yield} command, which we discuss later. For now, we concentrate on the execution of commands at a single replica $p$.
 
 An illustrative example of the replica state $A_p$ is given in Figure~\ref{fig:state-example}, which corresponds to the shopping list example of Figure~\ref{fig:make-doc}. For each local variable defined with a \textsf{let} command, $A_p$ maps the variable name to a cursor. In addition, $A_p$ maps \textsf{mapT(doc)} to a nested partial function representing the contents of the document. \textsf{mapT} denotes that the document \textsf{doc} is of type map. The only map entry is the key ``shopping'' of type \textsf{listT}. The list is represented in a manner resembling a linked list, with each list element assigned a unique identifier ($\mathit{id}_1, \mathit{id}_2, \mathit{id}_3$), and special \textsf{head} and \textsf{tail} atoms denoting the beginning and end of the list, respectively.
 
@@ -515,7 +527,7 @@ An operation is a tuple of the form
 \end{alignat*}
 where $\mathit{id}$ is the Lamport timestamp that uniquely identifies the operation, $\mathit{cur}$ is the cursor describing the position in the document being modified, and $\mathit{mut}$ is the mutation that was requested at the specified position.
 
-$\mathit{deps}$ is the set of causal dependencies of the operation, given as a set of Lamport timestamps. The semantics below defines $\mathit{deps}$ to be the set of all operation IDs that had been applied to the document at the time when the operation was generated. In a real implementation, this set would become impracticably large, so a compact representation of causal history would be used instead -- for example, version vectors~\cite{ParkerJr:1983jb}, state vectors~\cite{Ellis:1989ue}, or dotted version vectors~\cite{Preguica:2012fx}. However, to avoid ambiguity in our semantics we give the dependencies as a simple set of operation IDs.
+$\mathit{deps}$ is the set of causal dependencies of the operation, given as a set of Lamport timestamps. The rules below define $\mathit{deps}$ to be the set of all operation IDs that had already been applied to the document at the time when the operation was generated. In a real implementation, this set would become impracticably large, so a compact representation of causal history would be used instead -- for example, version vectors~\cite{ParkerJr:1983jb}, state vectors~\cite{Ellis:1989ue}, or dotted version vectors~\cite{Preguica:2012fx}. However, to avoid ambiguity in our semantics we give the dependencies as a simple set of operation IDs.
 
 The purpose of the causal dependencies $\mathit{deps}$ is to impose a partial ordering on operations: an operation can only be applied after all operations that ``happened before'' it have been applied. In particular, this means that the sequence of operations generated at one particular replica will be applied in the same order at every other replica. Operations that are concurrent, i.e. where there is no causal dependency, can be applied in any order.
 
@@ -600,7 +612,7 @@ The evaluation rules for commands are given in Figure~\ref{fig:send-recv}. The \
 
 \textsc{Make-Op} constructs an \textsf{op()} tuple of the form described above, and delegates to the \textsc{Apply-Local} rule to process the operation. \textsc{Apply-Local} does three things: it evaluates the operation to produce a modified local state $A_p'$, it adds the operation to the queue of generated operations $A_p(\mathsf{queue})$, and it adds the operation ID to the set of processed operations $A_p(\mathsf{ops})$.
 
-The \textsf{yield} command, inspired by Burckhardt et al.~\cite{Burckhardt:2012jy}, performs network communication: sending and receiving operations to and from other replicas, and applying operations from remote replicas. The rules \textsc{Apply-Remote}, \textsc{Send}, \textsc{Recv} and \textsc{Yield} define the semantics of \textsf{yield}. Since any of these rules can be used to evaluate \textsf{yield}, the semantics is nondeterministic, which models the asynchronicity of the network between replicas: a message sent by one replica arrives at another replica at some arbitrarily later point in time, and there is no mesage ordering guarantee in the network.
+The \textsf{yield} command, inspired by Burckhardt et al.~\cite{Burckhardt:2012jy}, performs network communication: sending and receiving operations to and from other replicas, and applying operations from remote replicas. The rules \textsc{Apply-Remote}, \textsc{Send}, \textsc{Recv} and \textsc{Yield} define the semantics of \textsf{yield}. Since any of these rules can be used to evaluate \textsf{yield}, their effect is nondeterministic, which models the asynchronicity of the network between replicas: a message sent by one replica arrives at another replica at some arbitrarily later point in time, and there is no mesage ordering guarantee in the network.
 
 The \textsc{Send} rule takes any operations that were placed in $A_p(\mathsf{queue})$ by \textsc{Apply-Local} and adds them to a send buffer $A_p(\mathsf{send})$. Correspondingly, the \textsc{Recv} rule takes operations in the send buffer of replica $q$ and adds them to the receive buffer $A_p(\mathsf{recv})$ of replica $p$. This is the only rule that involves more than one replica, and it models all network communication.
 
@@ -615,7 +627,7 @@ The actual document modifications are performed by evaluating the operations, wh
 \AxiomC{$\mathit{ctx},\, k_1 \evalto \mathit{child}$}
 \AxiomC{$\mathit{child},\, \mathsf{op}(\mathit{id}, \mathit{deps},
     \mathsf{cursor}(\langle k_2, \dots, k_{n-1} \rangle,\, k_n), \mathit{mut}) \evalto \mathit{child}'$}
-\AxiomC{$\mathit{ctx},\, \mathsf{addId}(k_1, \mathit{id}) \evalto \mathit{ctx}'$}
+\AxiomC{$\mathit{ctx},\, \mathsf{addId}(k_1, \mathit{id}, \mathit{mut}) \evalto \mathit{ctx}'$}
 \LeftLabel{\textsc{Descend}}
 \TrinaryInfC{$\mathit{ctx},\, \mathsf{op}(\mathit{id}, \mathit{deps},
     \mathsf{cursor}(\langle k_1, k_2, \dots, k_{n-1} \rangle,\, k_n), \mathit{mut}) \evalto
@@ -657,18 +669,26 @@ The actual document modifications are performed by evaluating the operations, wh
 \DisplayProof\proofSkipAmount
 \end{center}\vspace{6pt}
 
-\begin{prooftree}
+\begin{center}
+\AxiomC{$\mathit{mut} \not= \mathsf{delete}$}
 \AxiomC{$k_\mathit{tag} \in \{\mathsf{mapT}(k), \mathsf{listT}(k), \mathsf{regT}(k)\}$}
 \AxiomC{$\mathit{ctx},\, \mathsf{pres}(k) \evalto \mathit{pres}$}
-\LeftLabel{\textsc{Add-ID}}
-\BinaryInfC{$\mathit{ctx},\, \mathsf{addId}(k_\mathit{tag}, \mathit{id}) \evalto
+\LeftLabel{$\textsc{Add-ID}_1$}
+\TrinaryInfC{$\mathit{ctx},\, \mathsf{addId}(k_\mathit{tag}, \mathit{id}, \mathit{mut}) \evalto
     \mathit{ctx}[\, \mathsf{pres}(k) \,\mapsto\, \mathit{pres} \,\cup\, \{\mathit{id}\} \,]$}
-\end{prooftree}\vspace{6pt}
+\DisplayProof\hspace{3em}
+%
+\AxiomC{$\mathit{mut} = \mathsf{delete}$}
+\LeftLabel{$\textsc{Add-ID}_2$}
+\UnaryInfC{$\mathit{ctx},\, \mathsf{addId}(k_\mathit{tag}, \mathit{id}, \mathit{mut}) \evalto \mathit{ctx}$}
+\DisplayProof\proofSkipAmount
+\end{center}\vspace{6pt}
 
 \begin{prooftree}
 \AxiomC{$\mathit{val} \not= \texttt{[]} \,\wedge\, \mathit{val} \not= \texttt{\string{\string}}$}
 \AxiomC{$\mathit{ctx},\, \mathsf{clear}(\mathit{deps}, \mathsf{regT}(k)) \evalto \mathit{ctx}',\, \mathit{pres}$}
-\AxiomC{$\mathit{ctx}',\, \mathsf{addId}(\mathsf{regT}(k), \mathit{id}) \evalto \mathit{ctx}''$}
+\AxiomC{$\mathit{ctx}',\, \mathsf{addId}(\mathsf{regT}(k), \mathit{id}, \mathsf{assign}(\mathit{val}))
+    \evalto \mathit{ctx}''$}
 \AxiomC{$\mathit{ctx}'',\, \mathsf{regT}(k) \evalto \mathit{child}$}
 \LeftLabel{\textsc{Assign}}
 \QuaternaryInfC{$\mathit{ctx},\, \mathsf{op}(\mathit{id}, \mathit{deps},
@@ -680,7 +700,8 @@ The actual document modifications are performed by evaluating the operations, wh
 \begin{prooftree}
 \AxiomC{$\mathit{val} = \texttt{\string{\string}}$}
 \AxiomC{$\mathit{ctx},\, \mathsf{clearElem}(\mathit{deps}, k) \evalto \mathit{ctx}',\, \mathit{pres}$}
-\AxiomC{$\mathit{ctx}',\, \mathsf{addId}(\mathsf{mapT}(k), \mathit{id}) \evalto \mathit{ctx}''$}
+\AxiomC{$\mathit{ctx}',\, \mathsf{addId}(\mathsf{mapT}(k), \mathit{id}, \mathsf{assign}(\mathit{val}))
+    \evalto \mathit{ctx}''$}
 \AxiomC{$\mathit{ctx}'',\, \mathsf{mapT}(k) \evalto \mathit{child}$}
 \LeftLabel{\textsc{Empty-Map}}
 \QuaternaryInfC{$\mathit{ctx},\, \mathsf{op}(\mathit{id}, \mathit{deps},
@@ -691,7 +712,8 @@ The actual document modifications are performed by evaluating the operations, wh
 \begin{prooftree}
 \AxiomC{$\mathit{val} = \texttt{[]}$}
 \AxiomC{$\mathit{ctx},\, \mathsf{clearElem}(\mathit{deps}, k) \evalto \mathit{ctx}',\, \mathit{pres}$}
-\AxiomC{$\mathit{ctx}',\, \mathsf{addId}(\mathsf{listT}(k), \mathit{id}) \evalto \mathit{ctx}''$}
+\AxiomC{$\mathit{ctx}',\, \mathsf{addId}(\mathsf{listT}(k), \mathit{id}, \mathsf{assign}(\mathit{val}))
+    \evalto \mathit{ctx}''$}
 \AxiomC{$\mathit{ctx}'',\, \mathsf{listT}(k) \evalto \mathit{child}$}
 \LeftLabel{\textsc{Empty-List}}
 \QuaternaryInfC{$\mathit{ctx},\, \mathsf{op}(\mathit{id}, \mathit{deps},
@@ -727,7 +749,7 @@ Figure~\ref{fig:operation-rules} gives the rules that evaluate an operation $\ma
 
 When the operation's cursor refers to a tree node that is not the document root $\mathsf{doc}$, the \textsc{Descend} rule first applies. It recursively descends the document tree according to the vector of keys given in the cursor. If the tree node already exists in the local replica state, \textsc{Child-Get} finds it, otherwise \textsc{Child-Map} and \textsc{Child-List} create an empty map or list respectively.
 
-The \textsc{Descend} rule also invokes \textsc{Add-ID} at each tree node along the path described by the cursor, adding the operation ID to the presence set $\mathsf{pres}(k)$ to indicate that the subtree includes a mutation made by this operation.
+The \textsc{Descend} rule also invokes $\textsc{Add-ID}_{1,2}$ at each tree node along the path described by the cursor, adding the operation ID to the presence set $\mathsf{pres}(k)$ to indicate that the subtree includes a mutation made by this operation.
 
 The remaining rules in Figure~\ref{fig:operation-rules} apply when the vector of keys in the cursor is empty, i.e. when descended to the context of the tree node to which the mutation applies. The \textsc{Assign} rule handles assignment of a primitive value to a register, \textsc{Empty-Map} handles assignment where the value is the empty map literal \verb|{}|, and \textsc{Empty-List} handles assignment of the empty list \verb|[]|. These three rules for \textsf{assign} have a similar structure: first clearing the prior value at the cursor (as discussed in the next section), then adding the operation ID to the presence set, and finally incorporating the new value into the tree of local state.
 
@@ -859,115 +881,206 @@ Clearing maps and lists takes a similar approach: each element of the map or lis
 
 As outlined in Section~\ref{sec:intro-replication}, we require that all replicas automatically converge towards the same state -- a key requirement of a CRDT. We now formalize this notion, and show that the rules in Figures~\ref{fig:expr-rules} to~\ref{fig:clear-rules} satisfy this requirement.
 
-\section{Conclusion}
+\begin{definition}[valid execution]\label{def:valid-exec}
+A \emph{valid execution} is a set of operations generated by a set of replicas $\{p_1, \dots, p_k\} = \mathrm{ReplicaID}$, each reducing a sequence of commands $\langle \mathit{cmd}_1 \mathbin{;} \dots \mathbin{;} \mathit{cmd}_n \rangle$ without getting stuck.
+\end{definition}
 
-TODO conclusion.
+A reduction gets stuck if there is no application of rules in which all premises are satisfied. For example, the $\textsc{Next}_{2,3}$ rules in Figure~\ref{fig:expr-rules} get stuck if \textsf{next} tries to iterate past the end of a list; in a real implementation this would be a runtime error. By constraining valid executions to those that do not get stuck, we ensure that operations only refer to list elements that actually exist.
 
+Note that it is valid for an execution to never perform any network communication, either because it never invokes the \textsf{yield} command, or because the nondeterministic execution of \textsf{yield} never applies the \textsc{Recv} rule. We need only a replica's local state to determine whether reduction gets stuck.
+
+\begin{definition}[history]\label{def:history}
+A \emph{history} is a sequence of operations in the order it was applied at one particular replica $p$ by application of the rules \textsc{Apply-Local} and \textsc{Apply-Remote}.
+\end{definition}
+
+Since the evaluation rules sequentially apply one operation at a time at a given replica, the order is well-defined. Even if two replicas $p$ and $q$ applied the same set of operations, i.e. if $A_p(\mathsf{ops}) = A_q(\mathsf{ops})$, they may have applied any concurrent operations in a different order. Due to the premise $\mathit{op.deps} \subseteq A_p(\mathsf{ops})$ in \textsc{Apply-Remote}, histories are consistent with causality: if an operation has causal dependencies, it appears at some point after those dependencies in the history.
+
+\begin{definition}[document state]\label{def:doc-state}
+The \emph{document state} of a replica $p$ is the subtree of $A_p$ containing the document: that is, $A_p(\mathsf{mapT}(\mathsf{doc}))$ or $A_p(\mathsf{listT}(\mathsf{doc}))$ or $A_p(\mathsf{regT}(\mathsf{doc}))$, whichever is defined.
+\end{definition}
+
+$A_p$ contains variables defined with \textsf{let}, which are local to one replica, and not part of the replicated state. The definition of document state excludes these variables.
+
+\begin{convergence-thm}
+For any two replicas $p$ and $q$ that participated in a valid execution, if $A_p(\mathsf{ops}) = A_q(\mathsf{ops})$, then $p$ and $q$ have the same document state.
+\end{convergence-thm}
+
+This theorem is proved in the appendix. It formalizes the safety property of convergence: if two replicas have processed the same set of operations, possibly in a different order, then they are in the same state. In combination with a liveness property, namely that every replica eventually processes all operations, we obtain the desired notion of convergence: all replicas eventually end up in the same state.
+
+The liveness property depends on assumptions of replicas invoking \textsf{yield} sufficiently often, and all nondeterministic rules for \textsf{yield} being chosen fairly. We will not formalize the liveness property in this paper, but assert that it can usually be provided in practice, as network interruptions are usually of finite duration.
+
+\section{Conclusions and further work}
+
+In this paper we demonstrated how to compose CRDTs for ordered lists, maps and registers into a compound CRDT with a JSON data model. It supports arbitrarily nested lists and maps, and it allows replicas to make arbitrary changes to the data without waiting for network communication. Replicas asynchronously send mutations to other replicas in the form of operations. Concurrent operations are commutative, which ensures that replicas converge towards the same state without requiring application-specific conflict resolution logic.
+
+This work focused on the formal semantics of the JSON CRDT, represented as a mathematical model. We have also created a practical implementation and will report on its performance characteristics in follow-on work. In fact, we wrote the {\LaTeX} source text of this paper using an experimental collaborative text editor that is based on our implementation of this CRDT. We are making the character-by-character editing trace of this document available as supplemental data of this paper, in order to provide a dataset for the empirical study of collaborative editing algorithms.
+
+Our principle of not losing input due to concurrent modifications appears reasonable, but as illustrated in Figure~\ref{fig:todo-item}, it leads to merged document states that may be surprising to application programmers who are more familiar with sequential programs. Further work will be needed to understand the expectations of application programmers and to design data structures that are minimally surprising under concurrent modification.
+
+The CRDT defined in this paper supports insertion, deletion and assignment operations. In addition to these, it would be useful to support a \emph{move} operation (to change the order of elements in an ordered list, or to move a subtree from one position in a document to another) and an \emph{undo} operation. Moreover, garbage collection (tombstone removal) is required in order to prevent unbounded growth of the datastructure. We plan to address these missing features in future work.
 
 \section*{Acknowledgements}
 
-This research was supported by a grant from The Boeing Company.
+This research was supported by a grant from The Boeing Company. Thank you to Dominic Orchard and Diana Vasile for comments on a draft of this paper.
 
 \bibliographystyle{IEEEtran}
 \bibliography{references}{}
 
-\ifproofdraft
+\ifincludeappendix
+\clearpage
 \appendix[Proof of convergence]\label{sec:proof}
 
-When the operation is applied to the list state $A$, it produces a modified list state $A'$ as follows:
-\begin{align*}
-A' &= \mathrm{apply}(A, \mathsf{insert}(\mathit{id}, \mathit{prev}, v)) \\ &=
-\begin{cases}
-\quad \mathrm{apply}(A, \mathsf{insert}(\mathit{id}, n, v)) \\
-    \qquad\quad\text{if }\; A(\mathit{prev}) = (\placeholder, n) \;\wedge\; \mathit{id} < n \\
-\quad A[\,\mathit{prev} \mapsto (v_p, \mathit{id}),\; \mathit{id} \mapsto (v, n)\,] \\
-    \qquad\quad\text{if }\; A(\mathit{prev}) = (v_p, n) \;\wedge\; n < \mathit{id}
-\end{cases}
-\end{align*}
-where $<$ is the total order on Lamport timestamps, with the additional requirement that $\mathsf{tail} < (c, p)$ and $\mathsf{head} < (c, p)$ for any Lamport timestamp $(c, p)$.
+\begin{theorem}\label{thm:convergence}
+For any two replicas $p$ and $q$ that participated in a valid execution, if $A_p(\mathsf{ops}) = A_q(\mathsf{ops})$, then $p$ and $q$ have the same document state.
+\end{theorem}
 
-Applying an $\mathsf{insert}$ operation is like inserting an element into a linked list, except that the function first skips over list elements with an ID greater than the ID of the new element being inserted. This has the effect of deterministically ordering concurrent insertions made at the same position of the list. This property is proved formally below.
+\begin{proof}
+Consider the histories $H_p$ and $H_q$ at $p$ and $q$ respectively (see Definition~\ref{def:history}). The rules \textsc{Apply-Local} and \textsc{Apply-Remote} maintain the invariant that an operation is added to $A_p(\mathsf{ops})$ or $A_q(\mathsf{ops})$ if and only if it was applied to the document state at $p$ or $q$. Thus, $A_p(\mathsf{ops}) = A_q(\mathsf{ops})$ iff $H_p$ and $H_q$ contain the same set of operations (potentially ordered differently).
 
-The operation $\mathsf{delete}(\mathit{id})$ is an instruction to delete the element with ID $\mathit{id}$ from the list. The operation has the following semantics:
-\begin{align*}
-A' &= \mathrm{apply}(A, \mathsf{delete}(\mathit{id})) \\ &=
-A[\,\mathit{id} \mapsto (\bot, n)\,]
-\quad\text{if }\; A(\mathit{id}) = (\placeholder, n)
-\end{align*}
+The history $H_p$ at replica $p$ is a sequence of $n$ operations: $H_p = \langle o_1, \dots, o_n \rangle$, and the document state at $p$ is derived from $H_p$ by starting in the empty state and applying the operations in order. Likewise, the document state at $q$ is derived from $H_q$, which is a permutation of $H_p$. Both histories must be consistent with causality, i.e. for all $i$ with $1 \le i \le n$, we require $o_i.\mathit{deps} \subseteq \{o_j.\mathit{id} \mid 1 \le j < i\}$. The causality invariant is maintained by the \textsc{Apply-*} rules.
 
-The user view of a list A iterates over the list elements from $\mathsf{head}$ to $\mathsf{tail}$, skipping any deleted elements (tombstones):
-\begin{align*}
-\mathrm{view}(A) &= \mathrm{itr}(A, \mathsf{head}) \\
-\mathrm{itr}(A, \mathit{id}) &= \begin{cases}
-    [v] \mathbin{::} \mathrm{itr}(A, n) & \text{if }\; A(\mathit{id}) = (v, n) \;\wedge\; v \neq \bot \\
-                     \mathrm{itr}(A, n) & \text{if }\; A(\mathit{id}) = (v, n) \;\wedge\; v = \bot \\
-    [\,] & \text{if }\; \mathit{id} = \mathsf{tail}
-\end{cases}
-\end{align*}
+We can prove the theorem by induction over the length of history $n$.
 
-\subsection{Convergence}
+\emph{Base case:} An empty history with $n=0$ describes the empty document state. The empty document is always the same, and so any two replicas that have not executed any operations are by definition in the same state.
 
-We now prove the convergence property, also known as \emph{eventual consistency}, for this data structure.
+\emph{Induction step:} Given histories $H_p$ and $H_q$ of length $n$, such that $H_p = \langle o_1, \dots, o_n \rangle$ and $H_q$ is a permutation of $H_p$, and such that applying $H_p$ results in the same document state as applying $H_q$, we can construct new histories $H_p'$ and $H_q'$ of length $n+1$ by inserting a new operation $o_{n+1}$ at any causally ready position in $H_p$ or $H_q$ respectively. We must then show that for all the histories $H_p'$ and $H_q'$ constructed this way, applying the sequence of operations in order results in the same document state.
 
-\textbf{Theorem.} If any two peers process the same set of $\mathsf{insert}$ and $\mathsf{delete}$ operations, in any causally consistent order (but not necessarily the same order), then their final states are identical.
+In order to prove the induction step, we examine the insertion of $o_{n+1}$ into $H_p$ and $H_q$. Each history can be split into a prefix, which is the minimal subsequence $\langle o_1, \dots, o_j \rangle$ such that $o_{n+1}.\mathit{deps} \subseteq \{o_1.\mathit{id}, \dots, o_j.\mathit{id}\}$, and a suffix, which is the remaining subsequence $\langle o_{j+1}, \dots, o_n \rangle$. The prefix contains all operations that causally precede $o_{n+1}$, and possibly some operations that are concurrent with $o_{n+1}$; the suffix contains only operations that are concurrent with $o_{n+1}$. The earliest position where $o_{n+1}$ can be inserted into the history is between the prefix and the suffix; the latest position is at the end of the suffix; or it could be inserted at any point within the suffix.
 
-\textbf{Proof.} Each peer processes operations in some sequential order, and the state of a peer is modified only by operations. Therefore, we can derive the state of peer $p$ from the history of operations $H_p=o_1 \dots o_n$ applied at that peer, processed in the order of the history:
-$$ A_{H_p} = \mathrm{apply}(\mathrm{apply}(\dots \mathrm{apply}(A_\emptyset, o_1), \dots, o_{n-1}), o_n). $$
+We need to show that the effect on the document state is the same, regardless of the position at which $o_{n+1}$ is inserted, and regardless of whether it is inserted into $H_p$ or $H_q$. We do this in Lemma~\ref{lem:op-commute} by showing that $o_{n+1}$ is commutative with respect to all operations in the suffix, i.e. with respect to any operations that are concurrent to $o_{n+1}$.
+\end{proof}
 
-We can prove the theorem by induction over the length of the history $n$.
+Before we can prove the commutativity of operations, we must first define some more terms and prove some preliminary lemmas.
 
-\emph{Base case:} A history of $n=0$ operations describes an empty document. An empty document is deterministically defined, so any two peers that have not executed any operations are by definition in the same state.
+\begin{definition}[appearing after]
+In the ordered list $\mathit{ctx}$, list element $k_j$ \emph{appears after} list element $k_1$ if there exists a (possibly empty) sequence of list elements $k_2, \dots, k_{j-1}$ such that for all $i$ with $1 \le i < j$, $\mathit{ctx}(\mathsf{next}(k_i)) = k_{i+1}$. Moreover, we say $k_j$ appears \emph{immediately after} $k_1$ if that sequence is empty, i.e. if $\mathit{ctx}(\mathsf{next}(k_1)) = k_j$.
+\end{definition}
 
-\emph{Induction step:} Given causal histories $H_1$ and $H_2$ of length $n$, such that $H_1=o_1 \dots o_n$ and $H_2$ is a permutation of $H_1$, and such that applying $H_1$ results in the same state as applying $H_2$, we can construct new histories of length $n+1$ by inserting an operation $o_{n+1}$ at any causally ready position in either $H_1$ or $H_2$. We must then show that for all of the histories constructed this way, applying the operations results in the same final state.
+The definition of \emph{appearing after} corresponds to the order in which the \textsc{Next} rules iterate over the list.
 
-We show the induction step case by case, considering each type of operation $o_{n+1}$ that may be inserted.
+\begin{lemma}\label{lem:list-after}
+If $k_2$ appears after $k_1$ in an ordered list, and the list is mutated according to the evaluation rules, $k_2$ also appears after $k_1$ in all later document states.
+\end{lemma}
 
-\subsubsection{Commutativity of deletion}
+\begin{proof}
+The only rule that modifies the \textsf{next} pointers in the context is $\textsc{Insert}_1$, and it inserts a new list element between two existing list elements (possibly \textsf{head} and/or \textsf{tail}). This modification preserves the appears-after relationship between any two existing list elements. Since no other rule affects the list order, appears-after is always preserved.
+\end{proof}
 
-First consider the case that $o_{n+1}=\mathsf{delete}(\mathit{id})$. A list element can only be deleted if it exists in the list, so by causality, there must exist an operation $o_i=\mathsf{insert}(\mathit{id}, \placeholder, \placeholder)$ at a prior point in the history. Moreover, the Lamport timestamp used as $\mathit{id}$ is unique, so there must be exactly one such $\mathsf{insert}$ operation, and there cannot be any $\mathsf{insert}$ operation for the same $\mathit{id}$ at a point after $o_{n+1}$ in the history.
+Note that deletion of an element from a list does not remove it from the sequence of \textsf{next} pointers, but only clears its presence set $\mathsf{pres}(k)$.
 
-Note that applying $\mathsf{delete}(\mathit{id})$ modifies only the mapping for $A(\mathit{id})$, and otherwise leaves the state $A$ unchanged, so it is trivially commutative with respect to any operation that does not modify or depend on $A(\mathit{id})$.
+\begin{lemma}\label{lem:insert-between}
+If one replica inserts a list element $k_\mathit{new}$ between $k_1$ and $k_2$, i.e. if $k_\mathit{new}$ appears after $k_1$ in the list and $k_2$ appears after $k_\mathit{new}$ in the list on the source replica after applying \textsc{Apply-Local}, then $k_\mathit{new}$ appears after $k_1$ and $k_2$ appears after $k_\mathit{new}$ on every other replica where that operation is applied.
+\end{lemma}
 
-The first kind of operation that can modify the same $A(\mathit{id})$ is a $\mathsf{delete}$ operation for the same list element $\mathit{id}$. As the rule for applying this operation is idempotent, the presence of any other $\mathsf{delete}(\mathit{id})$ operations before or after $o_{n+1}$ in the history does not have any effect on the final state.
+\begin{proof}
+The rules for generating list operations ensure that $k_1$ is either \textsf{head} or an operation identifier, and $k_2$ is either \textsf{tail} or an operation identifier.
 
-We showed that an $\mathsf{insert}(\mathit{id}, \placeholder, \placeholder)$ operation can only occur prior to $\mathsf{delete}(\mathit{id})$. Thus, the only other kind of operation that can depend on or modify $A(\mathit{id})$ is an $\mathsf{insert}(\placeholder, \mathit{id}, \placeholder)$ operation, or a recursive call to the $\mathrm{apply}$ function that uses such an operation internally. Note that when applying such an $\mathsf{insert}$ operation, the queries for $A(\mathit{prev})$ ignore the $\mathit{value}$ element of the tuple and leave it unchanged, and only examine and modify the $\mathit{next}$ element of the tuple. By contrast, applying $\mathsf{delete}(\mathit{id})$ modifies only the $\mathit{value}$ element of $A(\mathit{id})$, and leaves the $\mathit{next}$ element unchanged.
+When the insertion operation is generated using the \textsc{Make-Op} rule, its operation identifier is given a counter value $\mathit{ctr}$ that is greater than the counter of any existing operation ID in $A_p(\mathsf{ops})$. If $k_2$ is an operation identifier, we must have $k_2 \in A_p(\mathsf{ops})$, since both \textsc{Apply-Local} and \textsc{Apply-Remote} add operation IDs to $A_p(\mathsf{ops})$ when applying an insertion. Thus, either $k_2 < k_\mathit{new}$ under the ordering relation $<$ for Lamport timestamps, or $k_2 = \mathsf{tail}$.
 
-Thus, if $o_{n+1}=\mathsf{delete}(\mathit{id})$ is inserted at any causally ready point in a history, the final state does not depend on the insertion point, because the inserted operation does not interact with any prior or following operations.
+When the insertion operation is applied on another replica using \textsc{Apply-Remote} and $\textsc{Insert}_{1,2}$, $k_2$ appears after $k_1$ on that replica (by Lemma~\ref{lem:list-after} and causality). The cursor of the operation is $\mathsf{cursor}(\langle\dots\rangle, k_1)$, so the rules start iterating the list at $k_1$, and therefore $k_\mathit{new}$ is inserted at some position after $k_1$.
 
-\subsubsection{Commutativity of insertion}
+If other concurrent insertions occurred between $k_1$ and $k_2$, their operation ID may be greater than or less than $k_\mathit{new}$, and thus either $\textsc{Insert}_1$ or $\textsc{Insert}_2$ may apply. In particular, $\textsc{Insert}_2$ skips over any list elements whose Lamport timestamp is greater than $k_\mathit{new}$. However, we know that $k_2 < k_\mathit{new} \vee k_2 = \mathsf{tail}$, and so $\textsc{Insert}_1$ will apply with $\mathit{next}=k_2$ at the latest. The $\textsc{Insert}_{1,2}$ rules thus never iterate past $k_2$, and thus $k_\mathit{new}$ is never inserted at a list position that appears after $k_2$.
+\end{proof}
 
-Now consider the case that $o_{n+1}=\mathsf{insert}(\mathit{id}, \mathit{prev}, v)$. The Lamport timestamp $\mathit{id}$ is freshly generated by the peer on which the edit was performed. Let $p$ by the peer on which $o_{n+1}$ was generated, let $A_p$ be the state of $p$ immediately before $o_{n+1}$ was applied, and let $A_p'$ be the state of $p$ immediately after $o_{n+1}$ was applied.
+\begin{definition}[common ancestor]\label{def:common-ancestor}
+In a history $H$, the \emph{common ancestor} of two concurrent operations $o_r$ and $o_s$ is the latest document state that causally precedes both $o_r$ and $o_s$.
+\end{definition}
 
-By the definition of Lamport timestamps, $\mathit{id}$ is the greatest timestamp in $A_p'$, and greater than any timestamp occurring in $A_p$. Therefore, in the state update $A_p' = \mathrm{apply}(A_p, \mathsf{insert}(\mathit{id}, \mathit{prev}, v)),$ the non-recursive case ($n < \mathit{id}$) must apply. Therefore we have:
-\begin{align*}
-A_p' =\; & A_p[\,\mathit{prev} \mapsto (v_\mathit{prev}, \mathit{id}),\; \mathit{id} \mapsto (v, \mathit{next})\,] \\
-\text{where}\quad & A_p(\mathit{prev}) = (v_\mathit{prev}, \mathit{next}) \\
-& \mathit{prev} < \mathit{id} \quad\text{and}\quad \mathit{next} < \mathit{id}.
-\end{align*}
+The common ancestor of $o_r$ and $o_s$ can be defined more formally as the document state resulting from applying a sequence of operations $\langle o_1, \dots, o_j \rangle$ that is the shortest prefix of $H$ that satisfies $(o_r.\mathit{deps} \cap o_s.\mathit{deps}) \subseteq \{o_1.\mathit{id}, \dots, o_j.\mathit{id}\}$.
 
-The rules that modify a peer's state never remove an ID (i.e.\ the domain of the partial function $A$ monotonically grows as operations are applied). Thus, when $o_{n+1}$ is applied at another peer $q$ at any causally ready time in its history, $A_q(\mathit{prev})$ and $A_q(\mathit{next})$ must be defined in the state $A_q$, or $\mathit{next} = \mathsf{tail}$.
+\begin{definition}[insertion interval]\label{def:insert-interval}
+Given two concurrent operations $o_r$ and $o_s$ that insert into the same list, the \emph{insertion interval} of $o_r$ is the pair of keys $(k_r^\mathrm{before}, k_r^\mathrm{after})$ such that $o_r.\mathit{id}$ appears after $k_r^\mathrm{before}$ when $o_r$ has been applied, $k_r^\mathrm{after}$ appears after $o_r.\mathit{id}$ when $o_r$ has been applied, and $k_r^\mathrm{after}$ appears immediately after $k_r^\mathrm{before}$ in the common ancestor of $o_r$ and $o_s$. The insertion interval of $o_s$ is the pair of keys $(k_s^\mathrm{before}, k_s^\mathrm{after})$ defined similarly.
+\end{definition}
 
-Note that the linked list structure is only modified by applying $\mathsf{insert}$ operations ($\mathsf{delete}$ operations modify values, but not the order of items in the list). Causal ordering requires $o_{n+1}$ to be applied after any operation that happened before, and before any operation that happened causally later, so we need only consider all possible orderings of $o_{n+1}$ with respect to other concurrent $\mathsf{insert}$ operations.
+It may be the case that $k_r^\mathrm{before}$ or $k_s^\mathrm{before}$ is \textsf{head}, and that $k_r^\mathrm{after}$ or $k_s^\mathrm{after}$ is \textsf{tail}.
 
-Moreover, the list structure is only modified by inserting a new element between two existing, adjacent elements. When $o_{n+1}$ is applied at peer $q$, the elements identified by $\mathit{prev}$ and $\mathit{next}$ are not necessarily adjacent in $A_q$, but we know that they must still be in the same order. According to the observation above, we also know that any other ID $\mathit{id}'$ inserted between those elements must have $\mathit{prev} < \mathit{id}'$ and $\mathit{next} < \mathit{id}'$.
+\begin{lemma}\label{lem:insert-conflict}
+For any two concurrent insertion operations $o_r, o_s$ in a history $H$, if $o_r.\mathit{cur} = o_s.\mathit{cur}$, then the order at which the inserted elements appear in the list after applying $H$ is deterministic and independent of the order of $o_r$ and $o_s$ in $H$.
+\end{lemma}
 
-By the induction hypothesis, let $H_1$ and $H_2$ be causal histories of operations $o_1 \dots o_n$ which result in the same final state when applied. When $o_{n+1}$ is inserted into either of these histories, causality demands that list elements $\mathit{prev}$ and $\mathit{next}$ were already inserted at some point in the history prior to $o_{n+1}$. When $o_{n+1}$ is applied, the $\mathrm{apply}(\placeholder, \mathsf{insert}(\mathit{id}, \mathit{prev}, v))$ rule starts iterating at $\mathit{prev}$ and skips over any elements with an ID greater than $\mathit{id}$. Since $\mathit{next} < \mathit{id}$, the recursion never continues beyond $\mathit{next}$. Thus, the $\mathrm{apply}$ rule is guaranteed to insert $\mathit{id}$ at some position between $\mathit{prev}$ and $\mathit{next}$.
+\begin{proof}
+Without loss of generality, assume that $o_r.\mathit{id} < o_s.\mathit{id}$ according to the ordering relation on Lamport timestamps. (If the operation ID of $o_r$ is greater than that of $o_s$, the two operations can be swapped in this proof.) We now distinguish the two possible orders of applying the operations:
 
-Therefore, we need only consider insertions that are concurrent to $o_{n+1}$ and that insert at some position between $\mathit{prev}$ and $\mathit{next}$. Let $H_c$ be a history of operations, derived from either $H_1$ or $H_2$ by selecting only $\mathsf{insert}$ operations that are concurrent with $o_{n+1}$ and that insert at a position within the interval from $\mathit{prev}$ to $\mathit{next}$. By the induction hypothesis, all possible sub-histories $H_c$ result in the same final order of list elements within that interval. The operations in $H_c$ do not affect (and are not affected by) the list order outside of that interval, so we can consider $H_c$ in isolation.
+\begin{enumerate}
+\item $o_r$ is applied before $o_s$ in $H$. Thus, at the time when $o_s$ is applied, $o_r$ has already been applied. When applying $o_s$, since $o_r$ has a lesser operation ID, the rule $\textsc{Insert}_1$ applies with $\mathit{next} = o_r.\mathit{id}$ at the latest, so the insertion position of $o_s$ must appear before $o_r$. It is not possible for $\textsc{Insert}_2$ to skip past $o_r$.
 
-Let $[\mathit{id}_1, \dots, \mathit{id}_k]$ be the Lamport timestamps of the list elements in the interval between $\mathit{prev}$ and $\mathit{next}$, in the list order unambiguously defined by $H_c$. We need to show that regardless at what position in $H_c$ we insert the operation $o_{n+1}$, the outcome is the same sequence of list elements $[\mathit{id}_1, \dots, \mathit{id}_m, \mathit{id}, \mathit{id}_{m+1}, \dots, \mathit{id}_k]$, where $\mathit{id}$ is the Lamport timestamp of $o_{n+1}$.
+\item $o_s$ is applied before $o_r$ in $H$. Thus, at the time when $o_r$ is applied, $o_s$ has already been applied. When applying $o_r$, the rule $\textsc{Insert}_2$ applies with $\mathit{next} = o_s.\mathit{id}$, so the rule skips past $o_s$ and inserts $o_r$ at a position after $o_s$. Moreover, any list elements that appear between $o_s.\mathit{cur}$ and $o_s$ at the time of inserting $o_r$ must have a Lamport timestamp greater than $o_s.\mathit{id}$, so $\textsc{Insert}_2$ also skips over those list elements when inserting $o_r$. Thus, the insertion position of $o_r$ must be after $o_s$.
+\end{enumerate}
 
-Since $\mathsf{insert}$ operations only add a new element between two existing, adjacent elements, it is sufficient to show that regardless where $o_{n+1}$ is inserted to $H_c$, the set of list elements $\{\mathit{id}_1, \dots, \mathit{id}_m\}$ that appear before $\mathit{id}$ in the final order is the same.
+Thus, the insertion position of $o_r$ appears after the insertion position of $o_s$, regardless of the order in which the two operations are applied. The ordering depends only on the operation IDs, and since these IDs are fixed at the time the operations are generated, the list order is determined by the IDs.
+\end{proof}
 
-Note that the $\mathrm{apply}$ rule ensures that after $\mathit{id}$ is inserted, all list elements between $\mathit{prev}$ and the insertion point have an ID greater than $\mathit{id}$, and the list element following the insertion point has an ID less than $\mathit{id}$. Further note that by the definition of Lamport timestamps, any operation that causally depends on an operation $o_i$ must have a greater ID than $o_i$.
+\begin{lemma}\label{lem:insert-reorder}
+In an operation history $H$, an insertion operation is commutative with respect to concurrent insertion operations to the same list.
+\end{lemma}
 
-Let the set $T_\mathit{left} = \{\mathit{id}_i \mid \mathsf{insert}(\mathit{id}_i, \mathit{prev}, \placeholder) \in H_c\}$ contain the IDs of all operations in $H_c$ that use $\mathit{prev}$ as their reference position. Any history consisting only of these operations, in any order, results in the same final list order, namely in order of descending Lamport timestamp (TODO prove this in a lemma, it might not be obvious). Since Lamport timestamps are totally ordered, this list order is deterministic and unique. $\mathit{id}$ has a deterministic position within this order.
+\begin{proof}
+Given any two concurrent insertion operations $o_r, o_s$ in $H$, we must show that the document state does not depend on the order in which $o_r$ and $o_s$ are applied.
 
-Any operation $o_i$ in $H_c$ that uses a different list element (not $\mathit{prev}$) as its reference position appears at some position after its reference element in the final list order, and has a Lamport timestamp greater than its reference element. If the reference element appears after $o_{n+1}$ in the final order, $o_i$ also appears after $o_{n+1}$, regardless of the order in which operations are applied.
+Either $o_r$ and $o_s$ have the same insertion interval as defined in Definition~\ref{def:insert-interval}, or they have different insertion intervals. If the insertion intervals are different, then by Lemma~\ref{lem:insert-between} the operations cannot affect each other, and so they have the same effect regardless of their order. So we need only analyze the case in which they have the same insertion interval $(k^\mathrm{before}, k^\mathrm{after})$.
 
-If the reference element appears before $o_{n+1}$ in the final order, that means the timestamp of the reference element is greater than $\mathit{id}$, and so the timestamp of $o_i$ is also greater than $\mathit{id}$. If $o_{n+1}$ appears after $o_i$ in the history, then the apply rule for $o_{n+1}$ skips over both $o_i$ and the reference element. If $o_i$ appears after $o_{n+1}$ in the history, the apply rule for $o_i$ does not skip over the list element for $o_{n+1}$, again because the timestamp for $o_i$ is greater than $\mathit{id}$. Either way, if the reference element appears before $o_{n+1}$ in the final order, so does $o_i$, regardless of the order in which operations are applied.
+If $o_r.\mathit{cur} = o_s.\mathit{cur}$, then by Lemma~\ref{lem:insert-conflict}, the operation with the greater operation ID appears first in the list, regardless of the order in which the operations are applied. If $o_r.\mathit{cur} \not= o_s.\mathit{cur}$, then one or both of the cursors must refer to a list element that appears between $k^\mathrm{before}$ and $k^\mathrm{after}$, and that did not yet exist in the common ancestor (Definition~\ref{def:common-ancestor}).
 
-TODO that last bit of the argument is a bit hand-wavy, need to make it more precise. But I think the general approach is ok. That completes the induction step, and thus the proof.
+Take a cursor that differs from $k^\mathrm{before}$: the list element it refers to was inserted by a prior operation, whose cursor in turn refers to another prior operation, and so on. Following this chain of cursors for a finite number of steps leads to an operation $o_\mathrm{first}$ whose cursor refers to $k^\mathrm{before}$ (since an insertion operation always inserts at a position after the cursor).
 
-\fi % proofdraft
+Note that all of the operations in this chain are causally dependent on $o_\mathrm{first}$, and so they must have a Lamport timestamp greater than $o_\mathrm{first}$. Thus, we can apply the same argument as in Lemma~\ref{lem:insert-conflict}: if $\textsc{Insert}_2$ skips over the list element inserted by $o_\mathrm{first}$, it will also skip over all of the list elements that are causally dependent on it; if $\textsc{Insert}_1$ inserts a new element before $o_\mathrm{first}$, it is also inserted before the chain of operations that is based on it.
+
+Therefore, the order of $o_r$ and $o_s$ in the final list is determined by the Lamport timestamps of the first insertions into the insertion interval after their common ancestor, in the chains of cursor references of the two operations. Since the argument above applies to all pairs of concurrent operations $o_r, o_s$ in $H$, we deduce that the final order of elements in the list depends only on the operation IDs but not the order of application, which shows that concurrent insertions to the same list are commutative.
+\end{proof}
+
+\begin{lemma}\label{lem:delete-commute}
+In a history $H$, a deletion operation is commutative with respect to concurrent operations.
+\end{lemma}
+
+\begin{proof}
+Given a deletion operation $o_d$ and any other concurrent operation $o_c$, we must show that the document state after applying both operations does not depend on the order in which $o_d$ and $o_c$ were applied.
+
+The rules in Figure~\ref{fig:clear-rules} define how a deletion operation $o_d$ is applied: starting at the cursor in the operation, they recursively descend the subtree, removing $o_d.\mathit{deps}$ from the presence set $\mathsf{pres}(k)$ at all branch nodes in the subtree, and updating all registers to remove any values written by operations in $o_d.\mathit{deps}$.
+
+If $o_c$ is an assignment or insertion operation, the \textsc{Assign} rule adds $o_c.\mathit{id}$ to the mapping from operation ID to value for a register, and the \textsc{Descend}, \textsc{Assign}, \textsc{Empty-Map} and \textsc{Empty-List} rules add $o_c.\mathit{id}$ to the presence sets $\mathsf{pres}(k)$ along the path through the document tree described by the cursor.
+
+If $o_d.\mathit{cur}$ is not a prefix of $o_c.\mathit{cur}$, the operations affect disjoint subtrees of the document, and so they are trivially commutative. Any state changes by \textsc{Descend} and $\textsc{Add-ID}_1$ along the shared part of the cursor path are applied using the set union operator $\cup$, which is commutative.
+
+Now consider the case where $o_d.\mathit{cur}$ is a prefix of $o_c.\mathit{cur}$. Since $o_c$ is concurrent with $o_d$, we know that $o_c.\mathit{id} \notin o_d.\mathit{deps}$. Therefore, if $o_c$ is applied before $o_d$ in the history, the \textsc{Clear-*} rules evaluating $o_d$ will leave any occurrences of $o_c.\mathit{id}$ in the document state undisturbed, while removing any occurrences of operations in $o_d.\mathit{deps}$.
+
+If $o_d$ is applied before $o_c$, the effect on presence sets and registers is the same as if they had been applied in the reverse order. Moreover, $o_c$ applies in the same way as if $o_d$ had not been applied previously, because applying a deletion only modifies presence sets and registers, without actually removing map keys or list elements, and because the rules for applying an operation are not conditional on the previous content of presence sets and registers.
+
+Thus, the effect of applying $o_c$ before $o_d$ is the same as applying $o_d$ before $o_c$, so the operations commute.
+\end{proof}
+
+\begin{lemma}\label{lem:assign-commute}
+In a history $H$, an assignment operation is commutative with respect to concurrent operations.
+\end{lemma}
+
+\begin{proof}
+Given an assignment $o_a$ and any other concurrent operation $o_c$, we must show that the document state after applying both operations does not depend on the order in which $o_a$ and $o_c$ were applied.
+
+The rules \textsc{Assign}, \textsc{Empty-Map} and \textsc{Empty-List} define how an assignment operation $o_a$ is applied, depending on the value being assigned. All three rules first clear any causally prior state from the cursor at which the assignment is occurring; by Lemma~\ref{lem:delete-commute}, this clearing operation is commutative with concurrent operations, and leaves updates by concurrent operations untouched.
+
+The rules also add $o_a.\mathit{id}$ to the presence set identified by the cursor, and \textsc{Descend} adds $o_a.\mathit{id}$ to the presence sets on the path from the root of the document tree described by the cursor. These state changes are applied using the set union operator $\cup$, which is commutative.
+
+Finally, in the case where value assigned by $o_a$ is a primitive and the \textsc{Assign} rule applies, the mapping from operation ID to value is added to the register by the expression $\mathit{child}[\,\mathit{id} \mapsto \mathit{val}\,]$. If $o_c$ is not an assignment operation or if $o_a.\mathit{cursor} \not= o_c.\mathit{cursor}$, the operations are independent and thus trivially commutative.
+
+If $o_a$ and $o_c$ are assignments to the same cursor, we use the commutativity of updates to a partial function: $\mathit{child}[\,\mathit{id}_1 \mapsto \mathit{val}_1\,]\,[\,\mathit{id}_2 \mapsto \mathit{val}_2\,] = \mathit{child}[\,\mathit{id}_2 \mapsto \mathit{val}_2\,]\,[\,\mathit{id}_1 \mapsto \mathit{val}_1\,]$ provided that $\mathit{id}_1 \not= \mathit{id}_2$. Since operation IDs (Lamport timestamps) are unique, two concurrent assignments add two different keys to the mapping, and their order is immaterial.
+
+Thus, all parts of the process of applying $o_a$ have the same effect on the document state, regardless of whether $o_c$ is applied before or after $o_a$, so the operations commute.
+\end{proof}
+
+\begin{lemma}\label{lem:op-commute}
+Given an operation history $H=\langle o_1, \dots, o_n \rangle$ from a valid execution, a new operation $o_{n+1}$ from that execution can be inserted at any point in $H$ after $o_{n+1}.\mathit{deps}$ have been applied. For all histories $H'$ that can be constructed this way, the document state resulting from applying the operations in $H'$ in order is the same, and independent of the ordering of any concurrent operations in $H$.
+\end{lemma}
+
+\begin{proof}
+$H$ can be split into a prefix and a suffix, as described in the proof of Theorem~\ref{thm:convergence}. The suffix contains only operations that are concurrent with $o_{n+1}$, and we allow $o_{n+1}$ to be inserted at any point after the prefix. We then prove the lemma case-by-case, depending on the type of mutation in $o_{n+1}$. 
+
+If $o_{n+1}$ is a deletion, by Lemma~\ref{lem:delete-commute} it is commutative with all operations in the suffix, and so $o_{n+1}$ can be inserted at any point within, before, or after the suffix without changing its effect on the final document state. Similarly, if $o_{n+1}$ is an assignment, by Lemma~\ref{lem:assign-commute} it is commutative with all operations in the suffix.
+
+If $o_{n+1}$ is an insertion, let $o_c$ be any operation in the suffix, and consider the cases of $o_{n+1}$ being inserted before and after $o_c$ in the history. If $o_c$ is a deletion or assignment, it is commutative with $o_{n+1}$ by Lemma~\ref{lem:delete-commute} or Lemma~\ref{lem:assign-commute} respectively. If $o_c$ is an insertion into the same list as $o_{n+1}$, then by Lemma~\ref{lem:insert-reorder} the operations are commutative. If $o_c$ is an insertion into a different list in the document, its effect is independent from $o_{n+1}$ and so the two operations can be applied in any order.
+
+Thus, $o_{n+1}$ is commutative with respect to any concurrent operation in $H$. Therefore, $o_{n+1}$ can be inserted into $H$ at any point after its causal dependencies, and the effect on the final document state is independent of the position at which the operation is inserted.
+\end{proof}
+
+This completes the induction step in the proof of Theorem~\ref{thm:convergence}, and thus proves convergence of our datatype.
+
+\fi % includeappendix
 \end{document}
