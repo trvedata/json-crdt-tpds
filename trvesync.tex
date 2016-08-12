@@ -51,8 +51,7 @@
 \IEEEtitleabstractindextext{%
 \begin{abstract}
 % abstract word limit: 100-200 words
-Many applications model their data in a general-purpose storage format such as JSON. This data structure is modified by the application as a result of user input. Such modifications are well understood if performed sequentially on a single copy of the data, but if the data is replicated and modified concurrently on multiple devices, it is unclear what the semantics should be. In this paper we present an algorithm and formal semantics for a JSON data structure that automatically resolves concurrent modifications such that no updates are lost, and such that all replicas converge towards the same state. It supports arbitrarily nested list and map types, which can be modified by insertion, deletion and assignment. The algorithm performs all merging client-side and does not depend on ordering guarantees from the network, allowing it to be deployed in peer-to-peer networks, and in messaging systems with end-to-end encryption.
-%TODO mention here that this is particularly useful for mobile systems which suffer periods of disconnectivity and also use multiple interfaces (which messes with ordering)?
+Many applications model their data in a general-purpose storage format such as JSON. This data structure is modified by the application as a result of user input. Such modifications are well understood if performed sequentially on a single copy of the data, but if the data is replicated and modified concurrently on multiple devices, it is unclear what the semantics should be. In this paper we present an algorithm and formal semantics for a JSON data structure that automatically resolves concurrent modifications such that no updates are lost, and such that all replicas converge towards the same state. It supports arbitrarily nested list and map types, which can be modified by insertion, deletion and assignment. The algorithm performs all merging client-side and does not depend on ordering guarantees from the network, making it suitable for deployment on mobile devices with poor network connectivity, in peer-to-peer networks, and in messaging systems with end-to-end encryption.
 \end{abstract}
 
 \begin{IEEEkeywords}
@@ -62,14 +61,13 @@ CRDTs, Collaborative Editing, P2P, JSON, Optimistic Replication, Operational Sem
 
 \IEEEraisesectionheading{\section{Introduction}\label{sec:introduction}}
 
-\IEEEPARstart{U}{sers} of mobile devices, such as smartphones, expect applications to continue working while the device is offline or has poor network connectivity, and to synchronize its state with the user's other devices when the network is available. Examples of such applications include calendars, address books, note-taking tools, to-do lists, and password managers. Moreover, many people want to collaborate with others on text documents, spreadsheets, presentations, graphics, and other kinds of documents.
-%TODO This seems like a false dichotomy to me: some text documents are for a single user, replicated across their device, and calendars are often collaborative...
+\IEEEPARstart{U}{sers} of mobile devices, such as smartphones, expect applications to continue working while the device is offline or has poor network connectivity, and to synchronize its state with the user's other devices when the network is available. Examples of such applications include calendars, address books, note-taking tools, to-do lists, and password managers. Similarly, collaborative work often requires several people to simultaneously edit the same text document, spreadsheet, presentation, graphic, and other kinds of document, with each person's edits reflected on the other collaborators' copies of the document with minimal delay.
 
 What these applications have in common is that the application state needs to be replicated to several devices, each of which may modify the state locally. The traditional approach to concurrency control, serializability, would cause the application to become unusable at times of poor network connectivity~\cite{Davidson:1985hv}. If we require that applications work regardless of network availability, we must assume that users can make arbitrary modifications concurrently on different devices, and that any resulting conflicts must be resolved.
 
 The simplest way to resolve conflicts is to discard some modifications when a conflict occurs, for example using a ``last writer wins'' policy. However, this approach is undesirable as it incurs data loss. An alternative is to let the user manually resolve the conflict, which is tedious and therefore should be avoided whenever possible.
 
-Current applications solve this problem with a range of ad-hoc and application-specific mechanisms. In this paper we present a general-purpose datatype that provides the full expressiveness of the JSON data model, and supports concurrent modifications without loss of information. As we shall see later, our approach typically supports the automatic merging of concurrent modifications into a JSON data structure. We introduce a single, general mechansim (a multi-value register) into our model to record conflicting updates to leaf nodes in the JSON data structure. This mechansim then provides a consistent basis on which applications can resolve any remaining conflicts through programmatic means, or via further user input.  We expect that implementations of this datatype will drastically simplify the development of collaborative and state-synchronizing applications for mobile devices.
+Current applications solve this problem with a range of ad-hoc and application-specific mechanisms. In this paper we present a general-purpose datatype that provides the full expressiveness of the JSON data model, and supports concurrent modifications without loss of information. As we shall see later, our approach typically supports the automatic merging of concurrent modifications into a JSON data structure. We introduce a single, general mechansim (a multi-value register) into our model to record conflicting updates to leaf nodes in the JSON data structure. This mechanism then provides a consistent basis on which applications can resolve any remaining conflicts through programmatic means, or via further user input.  We expect that implementations of this datatype will drastically simplify the development of collaborative and state-synchronizing applications for mobile devices.
 
 \subsection{JSON data model}
 
@@ -103,10 +101,11 @@ In Section~\ref{sec:semantics} we define formal semantics describing how conflic
 
 \subsection{Our contributions}
 
-Our main contribution in this work is to define an algorithm and formal semantics for collaborative, concurrent editing of JSON data structures with automatic conflict resolution. Although similar algorithms have previously been defined for lists, maps and registers individually (see Section~\ref{sec:related}), to our knowledge this paper is the first to integrate all of these structures into an arbitrarily composable datatype.
+Our main contribution in this work is to define an algorithm and formal semantics for collaborative, concurrent editing of JSON data structures with automatic conflict resolution. Although similar algorithms have previously been defined for lists, maps and registers individually (see Section~\ref{sec:related}), to our knowledge this paper is the first to integrate all of these structures into an arbitrarily composable datatype that can be deployed on any network topology.
 
-Composing maps and lists into arbitrarily nested structures opens up subtle challenges that do not arise in flat structures, due to the possibility of concurrent edits at different levels of the tree. We illustrate some of those challenges by example in Section~\ref{sec:examples}. Nested structures are an important requirement for many applications.
-Consequently the long-term goal of our work is to simplify the development of applications that use optimistic replication by providing a general algorithm for conflict resolution whose details can largely be hidden inside an easy-to-use software library.
+A key requirement of conflict resolution is that after any sequence of concurrent modifications, all replicas eventually converge towards the same state. In Section~\ref{sec:convergence} and the appendix we prove a theorem to show that our algorithm satisfies this requirement.
+
+Composing maps and lists into arbitrarily nested structures opens up subtle challenges that do not arise in flat structures, due to the possibility of concurrent edits at different levels of the tree. We illustrate some of those challenges by example in Section~\ref{sec:examples}. Nested structures are an important requirement for many applications. Consequently, the long-term goal of our work is to simplify the development of applications that use optimistic replication by providing a general algorithm for conflict resolution whose details can largely be hidden inside an easy-to-use software library.
 
 \section{Related work}\label{sec:related}
 
@@ -136,7 +135,7 @@ Although CRDTs for registers, maps and ordered lists have existed for years in i
 
 \subsection{Other approaches}\label{sec:related-other}
 
-Many replicated data systems need to deal with the problem of concurrent, conflicting modifications, but the solutions are often ad-hoc. For example, in Dynamo~\cite{DeCandia:2007ui}, if several values are concurrently written to the same key, the database preserves all of these values, and leaves conflict resolution to application code. Naively chosen merge functions often exhibit anomalies such as deleted items reappearing~\cite{DeCandia:2007ui}. We believe that conflict resolution is not a simple matter that can reasonably be left to application programmers.
+Many replicated data systems need to deal with the problem of concurrent, conflicting modifications, but the solutions are often ad-hoc. For example, in Dynamo~\cite{DeCandia:2007ui}, if several values are concurrently written to the same key, the database preserves all of these values, and leaves conflict resolution to application code -- in other words, the only datatype it supports is a multi-value register. Naively chosen merge functions often exhibit anomalies such as deleted items reappearing~\cite{DeCandia:2007ui}. We believe that conflict resolution is not a simple matter that can reasonably be left to application programmers.
 
 Another frequently-used approach to conflict resolution is \emph{last writer wins} (LWW), which arbitrarily chooses one among several concurrent writes as ``winner'' and discards the others. This approach is used in Apache Cassandra, and it is an option in many other systems including Riak and CouchDB. LWW does not meet our requirements, since we want no user input to be lost due to concurrent modifications.
 
@@ -169,12 +168,12 @@ In this section we informally introduce our approach to collaborative editing of
 \draw [thick,dashed,blue,->] (right1.south) to [out=270,in=45]  (left2.north east);
 \draw [thick,->] (right1) -- (right2);
 \end{tikzpicture}
-\caption{Concurrent assignment to a register.}\label{fig:register-assign}
+\caption{Concurrent assignment to the register at doc[``key''] by replicas $p$ and $q$.}\label{fig:register-assign}
 \end{figure*}
 
-To illustrate some of the subtleties that arise when JSON documents are concurrently modified, we present some examples.
+To illustrate some of the subtleties that arise when JSON documents are concurrently modified, we present some examples. In all examples we assume two replicas, labelled $p$ (drawn on the left-hand side) and $q$ (right-hand side). Local state for a replica is drawn in boxes and modifications to local state shown with labelled solid arrows; time runs down the page. Since replicas only mutate local state, we make communication of state changes between replicas explicit in our model. Network communication is depicted with dashed arrows.
 
-Our first example is shown in Figure~\ref{fig:register-assign}. In a document that maps ``key'' to a register with value ``A'', one replica sets the value of the register to ``B'', while another concurrently sets it to ``C''. As the replicas subsequently exchange edits, they detect the conflict. Since we do not want to simply discard one of the edits, and the strings ``B'' and ``C'' cannot be meaningfully merged, the system must preserve both concurrent updates. This datatype is known as a \emph{multi-value register}: although a replica can only assign a single value to the register, reading the register may return a set of multiple values that were concurrently written. An implementation may keep metadata about the provenance of each value (who made the change, on which device, at what time) to assist users with manually resolving the conflict.
+Our first example is shown in Figure~\ref{fig:register-assign}. In a document that maps ``key'' to a register with value ``A'', replica $p$ sets the value of the register to ``B'', while replica $q$ concurrently sets it to ``C''. As the replicas subsequently exchange edits via network communication, they detect the conflict. Since we do not want to simply discard one of the edits, and the strings ``B'' and ``C'' cannot be meaningfully merged, the system must preserve both concurrent updates. This datatype is known as a \emph{multi-value register}: although a replica can only assign a single value to the register, reading the register may return a set of multiple values that were concurrently written. An implementation may keep metadata about the provenance of each value (who made the change, on which device, at what time) to assist the developer in automatically resolving such conflicts in an application-specific way, or deferring to users for manual resolution.
 
 \begin{figure*}
 \centering
@@ -216,19 +215,19 @@ Another example is given in Figure~\ref{fig:map-remove}. Here, one replica adds 
 \path [draw,dotted] (5,-0.5) -- (5,8.5);
 \node (left0)  at  (0,8) [rectangle,draw] {\{\}};
 \node (right0) at (10,8) [rectangle,draw] {\{\}};
-\node (left1)  at  (0,6) [rectangle,draw] {\{``buy'': []\}};
-\node (right1) at (10,6) [rectangle,draw] {\{``buy'': []\}};
-\node (left2)  at  (0,4) [rectangle,draw] {\{``buy'': [``eggs'']\}};
-\node (left3)  at  (0,2) [rectangle,draw] {\{``buy'': [``eggs'', ``ham'']\}};
-\node (right2) at (10,4) [rectangle,draw] {\{``buy'': [``milk'']\}};
-\node (right3) at (10,2) [rectangle,draw] {\{``buy'': [``milk'', ``flour'']\}};
-\node (left4)  at  (0,0) [rectangle,draw] {\{``buy'': [``eggs'', ``ham'', ``milk'', ``flour'']\}};
-\node (right4) at (10,0) [rectangle,draw] {\{``buy'': [``eggs'', ``ham'', ``milk'', ``flour'']\}};
+\node (left1)  at  (0,6) [rectangle,draw] {\{``grocery'': []\}};
+\node (right1) at (10,6) [rectangle,draw] {\{``grocery'': []\}};
+\node (left2)  at  (0,4) [rectangle,draw] {\{``grocery'': [``eggs'']\}};
+\node (left3)  at  (0,2) [rectangle,draw] {\{``grocery'': [``eggs'', ``ham'']\}};
+\node (right2) at (10,4) [rectangle,draw] {\{``grocery'': [``milk'']\}};
+\node (right3) at (10,2) [rectangle,draw] {\{``grocery'': [``milk'', ``flour'']\}};
+\node (left4)  at  (0,0) [rectangle,draw] {\{``grocery'': [``eggs'', ``ham'', ``milk'', ``flour'']\}};
+\node (right4) at (10,0) [rectangle,draw] {\{``grocery'': [``eggs'', ``ham'', ``milk'', ``flour'']\}};
 \node (comms)  at  (5,1.4) [text=blue] {\footnotesize network communication};
-\draw [thick,->] (left0)  to node [left]  {doc[``buy''] := [];} (left1);
-\draw [thick,->] (right0) to node [right] {doc[``buy''] := [];} (right1);
-\draw [thick,->] (left1)  to node [left]  {doc[``buy''].iter.insert(``eggs'');} (left2);
-\draw [thick,->] (right1) to node [right] {doc[``buy''].iter.insert(``milk'');} (right2);
+\draw [thick,->] (left0)  to node [left]  {doc[``grocery''] := [];} (left1);
+\draw [thick,->] (right0) to node [right] {doc[``grocery''] := [];} (right1);
+\draw [thick,->] (left1)  to node [left]  {doc[``grocery''].iter.insert(``eggs'');} (left2);
+\draw [thick,->] (right1) to node [right] {doc[``grocery''].iter.insert(``milk'');} (right2);
 \draw [thick,->] (left2)  to node [left]  {eggs.insert(``ham'');} (left3);
 \draw [thick,->] (right2) to node [right] {milk.insert(``flour'');} (right3);
 \draw [thick,->] (left3)  to (left4);
@@ -239,7 +238,7 @@ Another example is given in Figure~\ref{fig:map-remove}. Here, one replica adds 
 \caption{Two replicas concurrently create ordered lists under the same map key.}\label{fig:two-lists}
 \end{figure*}
 
-The example in Figure~\ref{fig:two-lists} shows two replicas concurrently creating a new shopping list under the same map key ``buy'', and adding items to the list. When the replicas are merged, the lists need to be merged also. We preserve the ordering and adjacency of items inserted at each replica, so ``ham'' appears after ``eggs'', and ``flour'' appears after ``milk'' in the merged result. There is no information on which replica's items should appear first in the merged result, so the algorithm can make an arbitrary choice between ``eggs, ham, milk, flour'' and ``milk, flour, eggs, ham'', provided that all replicas end up with the same order.
+The example in Figure~\ref{fig:two-lists} shows two replicas concurrently creating a new shopping list under the same map key ``grocery'', and adding items to the list. When the modifications are combined, the lists need to be merged. We preserve the ordering and adjacency of items inserted at each replica, so ``ham'' appears after ``eggs'', and ``flour'' appears after ``milk'' in the merged result. There is no information on which replica's items should appear first in the merged result, so the algorithm can make an arbitrary choice between ``eggs, ham, milk, flour'' and ``milk, flour, eggs, ham'', provided that all replicas end up with the same order.
 
 \begin{figure*}
 \centering
@@ -273,9 +272,7 @@ The example in Figure~\ref{fig:two-lists} shows two replicas concurrently creati
 \caption{One replica removes a list element, while another concurrently updates its contents.}\label{fig:todo-item}
 \end{figure*}
 
-Our final example in Figure~\ref{fig:todo-item} shows a limitation of the principle of preserving all user input. In a to-do list application, one replica removes a to-do item from the list, while another replica concurrently marks the same item as done. As the changes are merged, the update of the map key ``done'' effectively causes the list item to be resurrected on the left replica, leading to a to-do item without a title (since the title was deleted as part of deleting the list item). This behavior is consistent with the example in Figure~\ref{fig:map-remove}, but it is perhaps surprising to users. In this example it may be more desirable to discard one of the concurrent updates, and thus preserve the implicit schema that a to-do item has both a ``title'' and a ``done'' field.
-
-The algorithm in this paper preserves all user input, and so it exhibits the behavior shown in Figure~\ref{fig:todo-item}. Further study will be required to determine to what degree this behavior matches the expectations of application developers and users.
+Finally, Figure~\ref{fig:todo-item} shows a limitation of the principle of preserving all user input. In a to-do list application, one replica removes a to-do item from the list, while another replica concurrently marks the same item as done. As the changes are merged, the update of the map key ``done'' effectively causes the list item to be resurrected on replica $p$, leaving a to-do item without a title (since the title was deleted as part of deleting the list item). This behavior is consistent with the example in Figure~\ref{fig:map-remove}, but it is perhaps surprising. In this case it may be more desirable to discard one of the concurrent updates, and thus preserve the implicit schema that a to-do item has both a ``title'' and a ``done'' field. We leave the analysis of developer expectations and the development of a schema language for future work.
 
 \subsection{JSON versus XML}\label{sec:json-xml}
 
@@ -290,23 +287,23 @@ Some applications may attach map-like semantics to the children of an XML docume
 \begin{figure}
 \centering
 \begin{tabular}{rcll}
-CMD & ::= & \textsf{let} $x$ = EXPR & $x \in \mathrm{VAR}$ \\
-& $|$ & $\mathrm{EXPR} := v$ & $v \in \mathrm{VAL}$ \\
-& $|$ & $\mathrm{EXPR}.\mathsf{insert}(v)$ & $v \in \mathrm{VAL}$ \\
-& $|$ & $\mathrm{EXPR}.\mathsf{delete}$ \\
-& $|$ & \textsf{yield} \\
-& $|$ & CMD; CMD \vspace{0.5em}\\
-EXPR & ::= & \textsf{doc} \\
+CMD & ::= & \texttt{let} $x$ \texttt{=} EXPR & $x \in \mathrm{VAR}$ \\
+& $|$ & $\mathrm{EXPR}$ \texttt{:=} $v$ & $v \in \mathrm{VAL}$ \\
+& $|$ & $\mathrm{EXPR}$\texttt{.insert(}$v$\texttt{)} & $v \in \mathrm{VAL}$ \\
+& $|$ & $\mathrm{EXPR}$\texttt{.delete} \\
+& $|$ & \texttt{yield} \\
+& $|$ & CMD\texttt{;} CMD \vspace{0.5em}\\
+EXPR & ::= & \texttt{doc} \\
 & $|$ & $x$ & $x \in \mathrm{VAR}$ \\
-& $|$ & EXPR\verb|["key"]| & $\mathtt{key} \in \mathrm{String}$ \\
-& $|$ & EXPR.\textsf{iter} \\
-& $|$ & EXPR.\textsf{next} \\
-& $|$ & EXPR.\textsf{keys} \\
-& $|$ & EXPR.\textsf{values} \vspace{0.5em}\\
-VAR & ::= & ${x_1, x_2, \dots}$ \vspace{0.5em}\\
+& $|$ & EXPR\texttt{[}$\mathit{key}$\texttt{]} & $\mathit{key} \in \mathrm{String}$ \\
+& $|$ & EXPR\texttt{.iter} \\
+& $|$ & EXPR\texttt{.next} \\
+& $|$ & EXPR\texttt{.keys} \\
+& $|$ & EXPR\texttt{.values} \vspace{0.5em}\\
+VAR & ::= & $x$ & $x \in \mathrm{VarString}$\\
 VAL & ::= & $n$ & $n \in \mathrm{Number}$ \\
-& $|$ & \verb|"str"| & $\mathtt{str} \in \mathrm{String}$ \\
-& $|$ & \verb|true| $|$ \verb|false| $|$ \verb|null| \\
+& $|$ & $\mathit{str}$ & $\mathit{str} \in \mathrm{String}$ \\
+& $|$ & \texttt{true} $|$ \texttt{false} $|$ \texttt{null} \\
 & $|$ & \verb|{}| $|$ \verb|[]|
 \end{tabular}
 \caption{Syntax of command language for querying and modifying a document.}\label{fig:local-syntax}
@@ -331,19 +328,19 @@ eggs.next.values // evaluates to {"milk"}
 \caption{Example of programmatically constructing a JSON document.}\label{fig:make-doc}
 \end{figure}
 
-To define the semantics for collaboratively editable data structures, we first define a simple command language that is executed locally at any of the replicas, and which allows that replica's local copy of the document to be queried and modified. Performing read-only queries has no side-effects, but modifying the document has the effect of producing \emph{operations} describing the mutation. Those operations are applied to the local copy of the document, and also enqueued for broadcasting to other replicas.
+To define the semantics for collaboratively editable data structures, we first define a simple command language that is executed locally at any of the replicas, and which allows that replica's local copy of the document to be queried and modified. Performing read-only queries has no side-effects, but modifying the document has the effect of producing \emph{operations} describing the mutation. Those operations are immediately applied to the local copy of the document, and also enqueued for asynchronous broadcasting to other replicas.
 
 The syntax of the command language is given in Figure~\ref{fig:local-syntax}. It is not a full programming language, but rather an API through which the document state is queried and modified. We assume that the program accepts user input and issues a (possibly infinite) sequence of commands to the API. We model only the semantics of those commands, and do not assume anything about the program in which the command language is embedded. The API differs slightly from the JSON libraries found in many programming languages, in order to allow us to define consistent merge semantics.
 
-We first explain the language informally, before giving its formal semantics. The expression construct EXPR is used to construct a \emph{cursor} which identifies a position in the document. An expression starts with either the special token \textsf{doc}, identifying the root of the JSON document tree, or a variable $x$ that was previously defined in a \textsf{let} command. Moving left to right through the expression, the cursor is navigated through the tree: the subscript operator \verb|["key"]| selects a key within a map, \textsf{iter} starts iterating over an ordered list and \textsf{next} moves to the next element of an ordered list.
+We first explain the language informally, before giving its formal semantics. The expression construct EXPR is used to construct a \emph{cursor} which identifies a position in the document. An expression starts with either the special token \texttt{doc}, identifying the root of the JSON document tree, or a variable $x$ that was previously defined in a \texttt{let} command. The expression defines, left to right, the path the cursor takes as it navigates through the tree towards the leaves: the subscript operator \texttt{[}$\mathit{key}$\texttt{]} selects a key within a map, \texttt{iter} starts iterating over an ordered list and \texttt{next} moves to the next element of an ordered list.
 
-The expression construct EXPR can also query the state of the document: \textsf{keys} returns the set of keys in the map at the current cursor, and \textsf{values} returns the value of the register at the current cursor. (\textsf{values} is not defined if the cursor refers to a map or list.)
+The expression construct EXPR can also query the state of the document: \texttt{keys} returns the set of keys in the map at the current cursor, and \texttt{values} returns the contents of the multi-value register at the current cursor. (\texttt{values} is not defined if the cursor refers to a map or list.)
 
-A command CMD either sets the value of a local variable (\textsf{let}), performs network communication (\textsf{yield}), or modifies the document. A document can be modified by assigning the value of a register (using the assignment operator :=), by inserting an element into a list (\textsf{insert}), or by deleting an element from a list or a map (\textsf{delete}). The preceding expression EXPR defines the cursor that identifies the part of the document being modified.
+A command CMD either sets the value of a local variable (\texttt{let}), performs network communication (\texttt{yield}), or modifies the document. A document can be modified by assigning the value of a register (using the assignment operator \texttt{:=}), by inserting an element into a list (\texttt{insert}), or by deleting an element from a list or a map (\texttt{delete}). The preceding expression EXPR defines the cursor that identifies the part of the document being modified.
 
-Figure~\ref{fig:make-doc} shows an example sequence of commands that constructs a new document representing a shopping list. First \textsf{doc} is set to \verb|{}|, the empty map literal. The second line navigates to the key \verb|"shopping"| and calls \textsf{iter}, which treats the value at that key as a list and selects the head of the list. If the key does not exist, it is implicitly created and set to the empty list. Finally, three items are inserted into the list. The \textsf{insert} command adds a new list element \emph{after} the current cursor position, or at the head if the cursor is at the head of the list. The variable \verb|list| refers to the head, so cheese is inserted before eggs, but the variable \verb|eggs| refers to the list element ``eggs'', so milk is inserted after eggs.
+Figure~\ref{fig:make-doc} shows an example sequence of commands that constructs a new document representing a shopping list. First \texttt{doc} is set to \verb|{}|, the empty map literal. The second line navigates to the key \texttt{"shopping"} and performs \texttt{iter}, which treats the value at that key as a list and selects the head of the list. Since the key does not exist, it is implicitly created and set to the empty list. Finally, three items are inserted into the list. The \texttt{insert} command adds a new list element \emph{after} the current cursor position, or at the head if the cursor is at the head of the list. The variable \texttt{list} refers to the head, so cheese is inserted before eggs, but the variable \texttt{eggs} refers to the list element ``eggs'', so milk is inserted after eggs.
 
-A few features of this language deliberately differ from most mainstream programming languages: keys in maps are implicitly created when they are first accessed, so there is no need for a command to put a new key-value pair into a map; lists can only be navigated by iteration (\textsf{next}) but not by index; and the language has literals for creating empty maps and lists, but not for non-empty collections. As we shall see later, these features are helpful for achieving desirable semantics in the presence of concurrent modifications.
+A few features of this language deliberately differ from most mainstream programming languages: keys in maps are implicitly created when they are first accessed, so there is no need for a command to put a new key-value pair into a map; lists can only be navigated by iteration (\texttt{next}) but not by index; and the language has literals for creating empty maps and lists, but not for non-empty collections. As we shall see later, these features are helpful for achieving desirable semantics in the presence of concurrent modifications.
 
 \section{Formal semantics}\label{sec:semantics}
 
@@ -512,7 +509,7 @@ For example,
 \[ \mathsf{cursor}(\langle \mathsf{mapT}(\mathsf{doc}), \mathsf{listT}(\text{``shopping''}) \rangle,\, \mathit{id}_1) \]
 is a cursor representing the list element \verb|"eggs"| in Figure~\ref{fig:make-doc}. It can be interpreted as a path through the structure in Figure~\ref{fig:state-example}, read from left to right: starting from the \textsf{doc} map at the root, it traverses through the map entry ``shopping'' of type \textsf{listT}, and finishes with the list element with identifier $\mathit{id}_1$.
 
-In general, $\mathsf{cursor}(\langle k_1, \dots, k_{n-1} \rangle,\, k_n)$ consists of a (possibly empty) vector of keys $\langle k_1, \dots, k_{n-1} \rangle$, and a final key $k_n$ (which is always present). $k_n$ can be thought of as the final element of the vector, with the distinction that it is not tagged with a datatype, whereas the elements of the vector are tagged with the datatype of the branch node, either \textsf{mapT} or \textsf{listT}.
+In general, $\mathsf{cursor}(\langle k_1, \dots, k_{n-1} \rangle,\, k_n)$ consists of a (possibly empty) vector of keys $\langle k_1, \dots, k_{n-1} \rangle$, and a final key $k_n$ which is always present. $k_n$ can be thought of as the final element of the vector, with the distinction that it is not tagged with a datatype, whereas the elements of the vector are tagged with the datatype of the branch node, either \textsf{mapT} or \textsf{listT}.
 
 The \textsc{Doc} rule in Figure~\ref{fig:expr-rules} defines the simplest cursor $\mathsf{cursor}(\langle\rangle,\, \mathsf{doc})$, referencing the root of the document using the special atom \textsf{doc}. The \textsc{Get} rule navigates a cursor to a particular key within a map. For example, the expression \verb|doc["shopping"]| evaluates to $\mathsf{cursor}(\langle \mathsf{mapT}(\mathsf{doc}) \rangle,\, \text{``shopping''})$ by applying the \textsc{Doc} and \textsc{Get} rules. Note that the expression \verb|doc[...]| implicitly asserts that \textsf{doc} is of type \textsf{mapT}, and this assertion is encoded in the cursor.
 
@@ -642,7 +639,7 @@ The \textsc{Send} rule takes any operations that were placed in $A_p(\mathsf{que
 
 Once an operation appears in the receive buffer $A_p(\mathsf{recv})$, the rule \textsc{Apply-Remote} may apply. Under the preconditions that the operation has not already been processed and that its causal dependencies are satisified, \textsc{Apply-Remote} evaluates the operation in the same way as \textsc{Apply-Local}, and adds the operation ID to the set of processed operations $A_p(\mathsf{ops})$.
 
-The actual document modifications are performed by evaluating the operations, which we discuss in the next section.
+The actual document modifications are performed by evaluating the operations, which we discuss next.
 
 \subsection{Applying operations}
 
@@ -906,7 +903,7 @@ Clearing maps and lists takes a similar approach: each element of the map or lis
 As outlined in Section~\ref{sec:intro-replication}, we require that all replicas automatically converge towards the same state -- a key requirement of a CRDT. We now formalize this notion, and show that the rules in Figures~\ref{fig:expr-rules} to~\ref{fig:clear-rules} satisfy this requirement.
 
 \begin{definition}[valid execution]\label{def:valid-exec}
-A \emph{valid execution} is a set of operations generated by a set of replicas $\{p_1, \dots, p_k\} = \mathrm{ReplicaID}$, each reducing a sequence of commands $\langle \mathit{cmd}_1 \mathbin{;} \dots \mathbin{;} \mathit{cmd}_n \rangle$ without getting stuck.
+A \emph{valid execution} is a set of operations generated by a set of replicas $\{p_1, \dots, p_k\}$, each reducing a sequence of commands $\langle \mathit{cmd}_1 \mathbin{;} \dots \mathbin{;} \mathit{cmd}_n \rangle$ without getting stuck.
 \end{definition}
 
 A reduction gets stuck if there is no application of rules in which all premises are satisfied. For example, the $\textsc{Next}_{2,3}$ rules in Figure~\ref{fig:expr-rules} get stuck if \textsf{next} tries to iterate past the end of a list; in a real implementation this would be a runtime error. By constraining valid executions to those that do not get stuck, we ensure that operations only refer to list elements that actually exist.
@@ -939,7 +936,7 @@ In this paper we demonstrated how to compose CRDTs for ordered lists, maps and r
 
 This work focused on the formal semantics of the JSON CRDT, represented as a mathematical model. We have also created a practical implementation and will report on its performance characteristics in follow-on work. In fact, we wrote the {\LaTeX} source text of this paper using an experimental collaborative text editor that is based on our implementation of this CRDT. We are making the character-by-character editing trace of this document available as supplemental data of this paper, in order to provide a dataset for the empirical study of collaborative editing algorithms.
 
-Our principle of not losing input due to concurrent modifications appears reasonable, but as illustrated in Figure~\ref{fig:todo-item}, it leads to merged document states that may be surprising to application programmers who are more familiar with sequential programs. Further work will be needed to understand the expectations of application programmers and to design data structures that are minimally surprising under concurrent modification.
+Our principle of not losing input due to concurrent modifications appears reasonable, but as illustrated in Figure~\ref{fig:todo-item}, it leads to merged document states that may be surprising to application programmers who are more familiar with sequential programs. Further work will be needed to understand the expectations of application programmers and to design data structures that are minimally surprising under concurrent modification. It may turn out that a schema language will be required to support more complex applications. A schema language could also support semantic annotations, such as indicating that a number should be treated as a counter rather than a register.
 
 The CRDT defined in this paper supports insertion, deletion and assignment operations. In addition to these, it would be useful to support a \emph{move} operation (to change the order of elements in an ordered list, or to move a subtree from one position in a document to another) and an \emph{undo} operation. Moreover, garbage collection (tombstone removal) is required in order to prevent unbounded growth of the datastructure. We plan to address these missing features in future work.
 
