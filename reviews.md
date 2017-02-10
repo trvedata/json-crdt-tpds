@@ -6,13 +6,23 @@ Reviewer 1
 > The article is very well written and easy to follow. The formal rules might
 > have been simpler in the format of a mathematical pseudo-code algorithm with
 > some auxiliary functions, but it is a stylistic choice and the rules do serve
-> the purpose of removing ambiguity and supporting the proofs. The work is also
+> the purpose of removing ambiguity and supporting the proofs.
+
+We agree that the style using deduction rules is unfortunately harder to read than
+pseudocode, but we felt that in this case, avoiding ambiguity was more important.
+Our initial definition actually used a combination of mathematics and pseudocode,
+but we found ourselves having to invent nonstandard notation in order to be
+precise. This notation turned out to be even more confusing than the deduction
+rules, which are at least a widely recognized notation.
+
+> The work is also
 > well grounded on the state of the art, so I would only draw attention to a very
 > recent related work that is also related to sequences and RGA: Hagit Attiya,
 > Sebastian Burckhardt, Alexey Gotsman, Adam Morrison, Hongseok Yang, and Marek
-> Zawirski, Specification and complexity of collaborative text editing,
-> PODC'16.  
-> 
+> Zawirski, Specification and complexity of collaborative text editing, PODC'16.  
+
+Thank you for the reference; we have added it to the paper.
+
 > As the authors acknowledge, the treatment of causality is based on the
 > frameworks of causal contexts defined for delta state CRDTs, and state based
 > CRDTs in general, and embodied in current Riak maps. The approach the authors

@@ -126,11 +126,13 @@ The Google Realtime API~\cite{Google:2015vk} is to our knowledge the only implem
 
 Conflict-free replicated datatypes (CRDTs) are a family of data structures that support concurrent modification and that guarantee convergence of such concurrent updates. They work by attaching additional metadata to the data structure, and making modification operations commutative by construction. The JSON datatype described in this paper is a kind of CRDT.
 
-CRDTs for registers, counters, maps and sets are widely known~\cite{Shapiro:2011un,Shapiro:2011wy}, and have been implemented in various deployed systems such as Riak~\cite{Brown:2014hs,Brown:2013wy}. For ordered lists, various algorithms have been proposed, including WOOT~\cite{Oster:2006wj}, RGA~\cite{Roh:2011dw}, Treedoc~\cite{Preguica:2009fz}, Logoot~\cite{Weiss:2010hx} and LSEQ~\cite{Nedelec:2013ky}. However, none of them support nesting: they assume that the elements of the CRDT map or list are primitive values, not another CRDT.
+CRDTs for registers, counters, maps and sets are widely known~\cite{Shapiro:2011un,Shapiro:2011wy}, and have been implemented in various deployed systems such as Riak~\cite{Brown:2014hs,Brown:2013wy}. For ordered lists, various algorithms have been proposed, including WOOT~\cite{Oster:2006wj}, RGA~\cite{Roh:2011dw}, Treedoc~\cite{Preguica:2009fz}, Logoot~\cite{Weiss:2010hx} and LSEQ~\cite{Nedelec:2013ky}. Attiya et al.~\cite{Attiya:2016kh} analyze the metadata overhead of collaboratively edited ordered lists, and provide a correctness proof of the RGA protocol. However, none of them support nesting: all of the aforementioned algorithms for CRDT lists and maps assume that each of their elements is a primitive value, not another CRDT.
 
 The problem of nesting one CRDT inside another (also known as \emph{composition} or \emph{embedding}) has only been studied more recently. Riak allows nesting of counters and registers inside maps, and of maps within other maps~\cite{Brown:2014hs,Brown:2013wy}. Embedding counters inside maps raises questions of semantics, which have been studied by Baquero, Almeida and Lerche~\cite{Baquero:2016iv}. Almeida et al.~\cite{Almeida:2016tk} also define delta mutations for nested maps, and Baquero et al.~\cite{Baquero:2015tm} define a theoretical framework for composition of state-based CRDTs, based on lattices. None of this work integrates CRDTs for ordered lists, but the treatment of causality in these datatypes forms a basis for the semantics developed in this paper.
 
 Burckhardt et al.~\cite{Burckhardt:2012jy} define \emph{cloud types}, which are similar to CRDTs and can be composed. They define \emph{cloud arrays}, which behave similarly to our map datatype, and \emph{entities}, which are like unordered sets or relations; ordered lists are not defined in this framework.
+
+On the other hand, Martin et al.~\cite{Martin:2010ih} generalize Logoot~\cite{Weiss:2010hx} to support collaborative editing of XML documents~-- that is, a tree of nested ordered lists without nested maps. As discussed in Section~\ref{sec:json-xml}, such a structure does not capture the expressiveness of JSON.
 
 Although CRDTs for registers, maps and ordered lists have existed for years in isolation, we are not aware of any prior work that allows them all to be composed into an arbitrarily nested CRDT with a JSON-like structure.
 
@@ -496,7 +498,7 @@ A few features of this language deliberately differ from most mainstream program
 \caption{Rules for evaluating expressions.}\label{fig:expr-rules}
 \end{figure*}
 
-The state of replica $p$ is described by $A_p$, a finite partial function. The evaluation rules of the command language inspect and modify this local state $A_p$, and they are independent of the state $A_q$ of any other replica $q$. The only communication between replicas occurs in the evaluation of the \textsf{yield} command, which we discuss later. For now, we concentrate on the execution of commands at a single replica $p$.
+The state of replica $p$ is described by $A_p$, a finite partial function. The evaluation rules of the command language inspect and modify this local state $A_p$, and they do not depend on $A_q$ (the state of any other replica $q \neq p$). The only communication between replicas occurs in the evaluation of the \textsf{yield} command, which we discuss later. For now, we concentrate on the execution of commands at a single replica $p$.
 
 An illustrative example of the replica state $A_p$ is given in Figure~\ref{fig:state-example}, which corresponds to the shopping list example of Figure~\ref{fig:make-doc}. For each local variable defined with a \textsf{let} command, $A_p$ maps the variable name to a cursor. In addition, $A_p$ maps \textsf{mapT(doc)} to a nested partial function representing the contents of the document. \textsf{mapT} denotes that the document \textsf{doc} is of type map. The only map entry is the key ``shopping'' of type \textsf{listT}. The list is represented in a manner resembling a linked list, with each list element assigned a unique identifier ($\mathit{id}_1, \mathit{id}_2, \mathit{id}_3$), and special \textsf{head} and \textsf{tail} atoms denoting the beginning and end of the list, respectively.
 
@@ -947,6 +949,16 @@ This research was supported by a grant from The Boeing Company. Thank you to Dom
 
 \bibliographystyle{IEEEtran}
 \bibliography{references}{}
+
+\begin{IEEEbiography}[{\includegraphics[width=1in]{mk428.jpg}}]{Martin Kleppmann}
+is a Research Associate in the Computer Laboratory at the University of Cambridge. His current research project, TRVE Data, works towards better security and privacy in cloud applications by applying end-to-end encryption to collaboratively editable application data. His book \emph{Designing Data-Intensive Applications} was published by O'Reilly Media in 2017. Previously, he worked as a software engineer and entrepreneur at several internet companies.
+\end{IEEEbiography}
+
+\begin{IEEEbiography}[{\includegraphics[width=1in]{arb33.jpg}}]{Alastair R. Beresford}
+is a Senior Lecturer in the Computer Laboratory at the University of Cambridge. He obtained his PhD from the University of Cambridge, working at the intersection of mobile computing and computer security. TODO more text
+\end{IEEEbiography}
+
+\vfill
 
 \ifincludeappendix
 \clearpage
