@@ -66,7 +66,7 @@ CRDTs, Collaborative Editing, P2P, JSON, Optimistic Replication, Operational Sem
 
 What these applications have in common is that the application state needs to be replicated to several devices, each of which may modify the state locally. The traditional approach to concurrency control, serializability, would cause the application to become unusable at times of poor network connectivity~\cite{Davidson:1985hv}. If we require that applications work regardless of network availability, we must assume that users can make arbitrary modifications concurrently on different devices, and that any resulting conflicts must be resolved.
 
-The simplest way to resolve conflicts is to discard some modifications when a conflict occurs, for example using a ``last writer wins'' policy. However, this approach is undesirable as it incurs data loss. An alternative is to let the user manually resolve the conflict, which is tedious and therefore should be avoided whenever possible.
+The simplest way to resolve conflicts is to discard some modifications when a conflict occurs, for example using a ``last writer wins'' policy. However, this approach is undesirable as it incurs data loss. An alternative is to let the user manually resolve the conflict, which is tedious and error-prone, and therefore should be avoided whenever possible.
 
 Current applications solve this problem with a range of ad-hoc and application-specific mechanisms. In this paper we present a general-purpose datatype that provides the full expressiveness of the JSON data model, and supports concurrent modifications without loss of information. As we shall see later, our approach typically supports the automatic merging of concurrent modifications into a JSON data structure. We introduce a single, general mechansim (a multi-value register) into our model to record conflicting updates to leaf nodes in the JSON data structure. This mechanism then provides a consistent basis on which applications can resolve any remaining conflicts through programmatic means, or via further user input.  We expect that implementations of this datatype will drastically simplify the development of collaborative and state-synchronizing applications for mobile devices.
 
@@ -95,7 +95,7 @@ Our algorithm works client-side and does not depend on any server to transform o
 
 In Section~\ref{sec:semantics} we define formal semantics describing how conflicts are resolved when a JSON document is concurrently modified on different devices. Our design is based on three simple principles:
 \begin{enumerate}
-\item All replicas of the data structure should automatically converge towards the same state.
+\item All replicas of the data structure should automatically converge towards the same state (a requirement known as \emph{strong eventual consistency}~\cite{Shapiro:2011un}).
 \item No user input should be lost due to concurrent modifications.
 \item If all sequential permutations of a set of updates lead to the same state, then concurrent execution of those updates also leads to the same state~\cite{Bieniusa:2012gt}.
 \end{enumerate}
@@ -114,7 +114,7 @@ In this section we discuss existing approaches to optimistic replication, collab
 
 \subsection{Operational transformation}\label{sec:related-ot}
 
-Algorithms based on \emph{operational transformation} (OT) have long been used for collaborative editing applications~\cite{Ellis:1989ue,Ressel:1996wx,Sun:1998vf,Nichols:1995fd}. Most of them treat a document as a single ordered list (of characters, for example) and do not support nested tree structures that are required by many applications. Some algorithms generalize OT to editing XML documents~\cite{Davis:2002iv,Ignat:2003jy,Wang:2015vo}, which provides nesting of ordered lists, but these algorithms do not support key-value maps as defined in this paper (see Section~\ref{sec:json-xml}). The performance of OT algorithms degrades rapidly as the number of concurrent operations increases~\cite{Li:2006kd}.
+Algorithms based on \emph{operational transformation} (OT) have long been used for collaborative editing applications~\cite{Ellis:1989ue,Ressel:1996wx,Sun:1998vf,Nichols:1995fd}. Most of them treat a document as a single ordered list (of characters, for example) and do not support nested tree structures that are required by many applications. Some algorithms generalize OT to editing XML documents~\cite{Davis:2002iv,Ignat:2003jy,Wang:2015vo}, which provides nesting of ordered lists, but these algorithms do not support key-value maps as defined in this paper (see Section~\ref{sec:json-xml}). The performance of OT algorithms degrades rapidly as the number of concurrent operations increases~\cite{Li:2006kd,Mehdi:2011ke}.
 
 Most deployed OT collaboration systems, including Google Docs~\cite{DayRichter:2010tt}, Etherpad~\cite{Etherpad:2011um}, Novell Vibe~\cite{Spiewak:2010vw} and Apache Wave (formerly Google Wave~\cite{Wang:2015vo}), rely on a single server to decide on a total ordering of operations~\cite{Lemonik:2016wh}, a design decision inherited from the Jupiter system~\cite{Nichols:1995fd}. This approach has the advantage of making the transformation functions simpler and less error-prone~\cite{Imine:2003ks}, but it does not meet our requirements, since we want to support peer-to-peer collaboration without requiring a single server.
 
@@ -124,9 +124,9 @@ The Google Realtime API~\cite{Google:2015vk} is to our knowledge the only implem
 
 \subsection{CRDTs}\label{sec:related-crdts}
 
-Conflict-free replicated datatypes (CRDTs) are a family of data structures that support concurrent modification and that guarantee convergence of such concurrent updates. They work by attaching additional metadata to the data structure, and making modification operations commutative by construction. The JSON datatype described in this paper is a kind of CRDT.
+Conflict-free replicated datatypes (CRDTs) are a family of data structures that support concurrent modification and that guarantee convergence of such concurrent updates. They work by attaching additional metadata to the data structure, and making modification operations commutative by construction. The JSON datatype described in this paper is a CRDT.
 
-CRDTs for registers, counters, maps and sets are widely known~\cite{Shapiro:2011un,Shapiro:2011wy}, and have been implemented in various deployed systems such as Riak~\cite{Brown:2014hs,Brown:2013wy}. For ordered lists, various algorithms have been proposed, including WOOT~\cite{Oster:2006wj}, RGA~\cite{Roh:2011dw}, Treedoc~\cite{Preguica:2009fz}, Logoot~\cite{Weiss:2010hx} and LSEQ~\cite{Nedelec:2013ky}. Attiya et al.~\cite{Attiya:2016kh} analyze the metadata overhead of collaboratively edited ordered lists, and provide a correctness proof of the RGA protocol. However, none of them support nesting: all of the aforementioned algorithms for CRDT lists and maps assume that each of their elements is a primitive value, not another CRDT.
+CRDTs for registers, counters, maps and sets are well-known~\cite{Shapiro:2011un,Shapiro:2011wy}, and have been implemented in various deployed systems such as Riak~\cite{Brown:2014hs,Brown:2013wy}. For ordered lists, various algorithms have been proposed, including WOOT~\cite{Oster:2006wj}, RGA~\cite{Roh:2011dw}, Treedoc~\cite{Preguica:2009fz}, Logoot~\cite{Weiss:2010hx} and LSEQ~\cite{Nedelec:2013ky}. Attiya et al.~\cite{Attiya:2016kh} analyze the metadata overhead of collaboratively edited ordered lists, and provide a correctness proof of the RGA algorithm. However, none of them support nesting: all of the aforementioned algorithms for CRDT lists and maps assume that each of their elements is a primitive value, not another CRDT.
 
 The problem of nesting one CRDT inside another (also known as \emph{composition} or \emph{embedding}) has only been studied more recently. Riak allows nesting of counters and registers inside maps, and of maps within other maps~\cite{Brown:2014hs,Brown:2013wy}. Embedding counters inside maps raises questions of semantics, which have been studied by Baquero, Almeida and Lerche~\cite{Baquero:2016iv}. Almeida et al.~\cite{Almeida:2016tk} also define delta mutations for nested maps, and Baquero et al.~\cite{Baquero:2015tm} define a theoretical framework for composition of state-based CRDTs, based on lattices. None of this work integrates CRDTs for ordered lists, but the treatment of causality in these datatypes forms a basis for the semantics developed in this paper.
 
@@ -138,11 +138,11 @@ Although CRDTs for registers, maps and ordered lists have existed for years in i
 
 \subsection{Other approaches}\label{sec:related-other}
 
-Many replicated data systems need to deal with the problem of concurrent, conflicting modifications, but the solutions are often ad-hoc. For example, in Dynamo~\cite{DeCandia:2007ui}, if several values are concurrently written to the same key, the database preserves all of these values, and leaves conflict resolution to application code -- in other words, the only datatype it supports is a multi-value register. Naively chosen merge functions often exhibit anomalies such as deleted items reappearing~\cite{DeCandia:2007ui}. We believe that conflict resolution is not a simple matter that can reasonably be left to application programmers.
+Many replicated data systems need to deal with the problem of concurrent, conflicting modifications, but the solutions are often ad-hoc. For example, in Dynamo~\cite{DeCandia:2007ui} and CouchDB, if several values are concurrently written to the same key, the database preserves all of these values, and leaves conflict resolution to application code -- in other words, the only datatype it supports is a multi-value register. Naively chosen merge functions often exhibit anomalies such as deleted items reappearing~\cite{DeCandia:2007ui}. We believe that conflict resolution is not a simple matter that can reasonably be left to application programmers.
 
-Another frequently-used approach to conflict resolution is \emph{last writer wins} (LWW), which arbitrarily chooses one among several concurrent writes as ``winner'' and discards the others. This approach is used in Apache Cassandra, and it is an option in many other systems including Riak and CouchDB. LWW does not meet our requirements, since we want no user input to be lost due to concurrent modifications.
+Another frequently-used approach to conflict resolution is \emph{last writer wins} (LWW), which arbitrarily chooses one among several concurrent writes as ``winner'' and discards the others. LWW is used in Apache Cassandra, for example. It does not meet our requirements, since we want no user input to be lost due to concurrent modifications.
 
-Finally, systems such as Bayou~\cite{Terry:1995dn} allow offline nodes to execute transactions tentatively, and confirm them when they are next online. This approach relies on all servers executing transactions in the same serial order, and deciding whether a transaction was successful depending on its preconditions. As discussed in Section~\ref{sec:related-ot}, such serial ordering requirements are prohibitive in a peer-to-peer system of mobile devices. The possibility of tentative transactions later being rolled back also opens the risk of user input being lost.
+Finally, systems such as Bayou~\cite{Terry:1995dn} allow offline nodes to execute transactions tentatively, and confirm them when they are next online. This approach relies on all servers executing transactions in the same serial order, and deciding whether a transaction was successful depending on its preconditions. Bayou has the advantage of being able to express global invariants such as uniqueness constraints, which require serialization and cannot be expressed using CRDTs~\cite{Bailis:2014th}. Bayou's downside is that tentative transactions may be rolled back, requiring explicit handling by the application, whereas CRDTs are defined such that operations cannot fail after they have been performed on one replica.
 
 
 \section{Composing data structures}\label{sec:composing}
@@ -164,8 +164,8 @@ In this section we informally introduce our approach to collaborative editing of
 \node (left2)  at (0,0) [rectangle,draw] {\{``key'': \{``B'', ``C''\}\}};
 \node (right2) at (8,0) [rectangle,draw] {\{``key'': \{``B'', ``C''\}\}};
 \node (comms)  at (4,1.6) [text=blue] {\footnotesize network communication};
-\draw [thick,->] (left0) to node [left,inner sep=8pt] {doc[``key''] := ``B'';} (left1);
-\draw [thick,->] (right0) to node [right,inner sep=8pt] {doc[``key''] := ``C'';} (right1);
+\draw [thick,->] (left0) to node [left,inner sep=8pt] {doc.get(``key'') := ``B'';} (left1);
+\draw [thick,->] (right0) to node [right,inner sep=8pt] {doc.get(``key'') := ``C'';} (right1);
 \draw [thick,->] (left1) -- (left2);
 \draw [thick,dashed,blue,->] (left1.south)  to [out=270,in=135] (right2.north west);
 \draw [thick,dashed,blue,->] (right1.south) to [out=270,in=45]  (left2.north east);
@@ -181,14 +181,14 @@ Our first example is shown in Figure~\ref{fig:register-assign}. In a document th
 \begin{figure*}
 \centering
 \begin{tikzpicture}[auto,scale=0.8]
-\path [draw,dotted] (4,-1) -- (4,7.5);
-\node (left0)  at (0,7) [rectangle,draw] {\{``colors'': \{``blue'': ``\#0000ff''\}\}};
-\node (right0) at (8,7) [rectangle,draw] {\{``colors'': \{``blue'': ``\#0000ff''\}\}};
+\path [draw,dotted] (4,-1) -- (4,8);
+\node (left0)  at (0,7.5) [rectangle,draw] {\{``colors'': \{``blue'': ``\#0000ff''\}\}};
+\node (right0) at (8,7.5) [rectangle,draw] {\{``colors'': \{``blue'': ``\#0000ff''\}\}};
 \node [matrix] (left1) at (0,4) [rectangle,draw] {
     \node {\{``colors'': \{``blue'': ``\#0000ff'',}; \\
     \node {``red'': ``\#ff0000''\}\}}; \\
 };
-\node (right1) at (8,5) [rectangle,draw] {\{``colors'': \{\}\}};
+\node (right1) at (8,5.5) [rectangle,draw] {\{``colors'': \{\}\}};
 \node (right2) at (8,3) [rectangle,draw] {\{``colors'': \{``green'': ``\#00ff00''\}\}};
 \node [matrix] (left2) at (0,0) [rectangle,draw] {
     \node {\{``colors'': \{``red'': ``\#ff0000'',}; \\
@@ -199,9 +199,11 @@ Our first example is shown in Figure~\ref{fig:register-assign}. In a document th
     \node {``green'': ``\#00ff00''\}\}}; \\
 };
 \node (comms) at (4,2.1) [text=blue] {\footnotesize network communication};
-\draw [thick,->] (left0)  to node [left]  {doc[``colors''][``red''] := ``\#ff0000'';} (left1);
-\draw [thick,->] (right0) to node [right] {doc[``colors''] = \{\};} (right1);
-\draw [thick,->] (right1) to node [right] {doc[``colors''][``green''] := ``\#00ff00'';} (right2);
+\draw [thick,->] (left0)  -- (left1)
+    node [left,text width=4.2cm,text centered,midway]  {doc.get(``colors'').get(``red'') := ``\#ff0000'';};
+\draw [thick,->] (right0) to node [right] {doc.get(``colors'') := \{\};} (right1);
+\draw [thick,->] (right1) -- (right2)
+    node [right,text width=4.2cm,text centered,midway] {doc.get(``colors'').get(``green'') := ``\#00ff00'';};
 \draw [thick,->] (left1)  to (left2);
 \draw [thick,->] (right2) to (right3);
 \draw [thick,dashed,blue,->] (left1.south)  to [out=270,in=135] (right3.north west);
@@ -215,24 +217,28 @@ Another example is given in Figure~\ref{fig:map-remove}. Here, one replica adds 
 \begin{figure*}
 \centering
 \begin{tikzpicture}[auto,scale=0.8]
-\path [draw,dotted] (5,-0.5) -- (5,8.5);
-\node (left0)  at  (0,8) [rectangle,draw] {\{\}};
-\node (right0) at (10,8) [rectangle,draw] {\{\}};
-\node (left1)  at  (0,6) [rectangle,draw] {\{``grocery'': []\}};
-\node (right1) at (10,6) [rectangle,draw] {\{``grocery'': []\}};
-\node (left2)  at  (0,4) [rectangle,draw] {\{``grocery'': [``eggs'']\}};
-\node (left3)  at  (0,2) [rectangle,draw] {\{``grocery'': [``eggs'', ``ham'']\}};
-\node (right2) at (10,4) [rectangle,draw] {\{``grocery'': [``milk'']\}};
-\node (right3) at (10,2) [rectangle,draw] {\{``grocery'': [``milk'', ``flour'']\}};
-\node (left4)  at  (0,0) [rectangle,draw] {\{``grocery'': [``eggs'', ``ham'', ``milk'', ``flour'']\}};
-\node (right4) at (10,0) [rectangle,draw] {\{``grocery'': [``eggs'', ``ham'', ``milk'', ``flour'']\}};
+\path [draw,dotted] (5,-0.5) -- (5,10);
+\node (left0)  at  (0,9.5) [rectangle,draw] {\{\}};
+\node (right0) at (10,9.5) [rectangle,draw] {\{\}};
+\node (left1)  at  (0,7.5) [rectangle,draw] {\{``grocery'': []\}};
+\node (right1) at (10,7.5) [rectangle,draw] {\{``grocery'': []\}};
+\node (left2)  at  (0,5.0) [rectangle,draw] {\{``grocery'': [``eggs'']\}};
+\node (left3)  at  (0,2.5) [rectangle,draw] {\{``grocery'': [``eggs'', ``ham'']\}};
+\node (right2) at (10,5.0) [rectangle,draw] {\{``grocery'': [``milk'']\}};
+\node (right3) at (10,2.5) [rectangle,draw] {\{``grocery'': [``milk'', ``flour'']\}};
+\node (left4)  at  (0,0.0) [rectangle,draw] {\{``grocery'': [``eggs'', ``ham'', ``milk'', ``flour'']\}};
+\node (right4) at (10,0.0) [rectangle,draw] {\{``grocery'': [``eggs'', ``ham'', ``milk'', ``flour'']\}};
 \node (comms)  at  (5,1.4) [text=blue] {\footnotesize network communication};
-\draw [thick,->] (left0)  to node [left]  {doc[``grocery''] := [];} (left1);
-\draw [thick,->] (right0) to node [right] {doc[``grocery''] := [];} (right1);
-\draw [thick,->] (left1)  to node [left]  {doc[``grocery''].iter.insert(``eggs'');} (left2);
-\draw [thick,->] (right1) to node [right] {doc[``grocery''].iter.insert(``milk'');} (right2);
-\draw [thick,->] (left2)  to node [left]  {eggs.insert(``ham'');} (left3);
-\draw [thick,->] (right2) to node [right] {milk.insert(``flour'');} (right3);
+\draw [thick,->] (left0)  to node [left]  {doc.get(``grocery'') := [];} (left1);
+\draw [thick,->] (right0) to node [right] {doc.get(``grocery'') := [];} (right1);
+\draw [thick,->] (left1)  -- (left2)
+    node [left,text width=4cm,text centered,midway]  {doc.get(``grocery'').idx(0) .insert(``eggs'');};
+\draw [thick,->] (right1) -- (right2)
+    node [right,text width=4cm,text centered,midway] {doc.get(``grocery'').idx(0) .insert(``milk'');};
+\draw [thick,->] (left2)  -- (left3)
+    node [left,text width=4cm,text centered,midway]  {doc.get(``grocery'').idx(1) .insert(``ham'');};
+\draw [thick,->] (right2) -- (right3)
+    node [right,text width=4cm,text centered,midway] {doc.get(``grocery'').idx(1) .insert(``flour'');};
 \draw [thick,->] (left3)  to (left4);
 \draw [thick,->] (right3) to (right4);
 \draw [thick,dashed,blue,->] (left3.south)  to [out=270,in=135] (right4.north west);
@@ -246,9 +252,65 @@ The example in Figure~\ref{fig:two-lists} shows two replicas concurrently creati
 \begin{figure*}
 \centering
 \begin{tikzpicture}[auto,scale=0.8]
-\path [draw,dotted] (4,-0.5) -- (4,8);
-\node (leftR)  at (0,7.5) {Replica $p$:};
-\node (rightR) at (8,7.5) {Replica $q$:};
+\path [draw,dotted] (4,-0.5) -- (4,8.5);
+\node (leftR)  at (0,8) {Replica $p$:};
+\node (rightR) at (8,8) {Replica $q$:};
+\node (left1)  at (0,7) [rectangle,draw] {[``a'', ``b'', ``c'']};
+\node (left2)  at (0,5) [rectangle,draw] {[``a'', ``c'']};
+\node (left3)  at (0,3) [rectangle,draw] {[``a'', ``x'', ``c'']};
+\node (left4)  at (0,0) [rectangle,draw] {[``y'', ``a'', ``x'', ``z'', ``c'']};
+\node (right1) at (8,7) [rectangle,draw] {[``a'', ``b'', ``c'']};
+\node (right2) at (8,5) [rectangle,draw] {[``y'', ``a'', ``b'', ``c'']};
+\node (right3) at (8,3) [rectangle,draw] {[``y'', ``a'', ``z'', ``b'', ``c'']};
+\node (right4) at (8,0) [rectangle,draw] {[``y'', ``a'', ``x'', ``z'', ``c'']};
+\node (comms)  at (4, 1.5) [text=blue] {\footnotesize network communication};
+\draw [thick,->] (left1)  to node [left]  {doc.idx(2).delete;} (left2);
+\draw [thick,->] (left2)  to node [left]  {doc.idx(1).insert(``x'');} (left3);
+\draw [thick,->] (right1) to node [right] {doc.idx(0).insert(``y'');} (right2);
+\draw [thick,->] (right2) to node [right] {doc.idx(2).insert(``z'');} (right3);
+\draw [thick,->] (left3)  to (left4);
+\draw [thick,->] (right3) to (right4);
+\draw [thick,dashed,blue,->] (left3.south)  to [out=270,in=135] (right4.north west);
+\draw [thick,dashed,blue,->] (right3.south) to [out=270,in=45]  (left4.north east);
+\end{tikzpicture}
+\caption{Concurrent editing of an ordered list of characters (i.e., a text document).}
+\end{figure*}
+
+\begin{figure*}
+\centering
+\begin{tikzpicture}[auto,scale=0.8]
+\path [draw,dotted] (4,-1) -- (4,7.5);
+\node (left1)  at (0,7) [rectangle,draw] {\{\}};
+\node (left2)  at (0,5) [rectangle,draw] {\{``a'': \{\}\}};
+\node (left3)  at (0,3) [rectangle,draw] {\{``a'': \{``x'': ``y''\}\}};
+\node [matrix] (left4) at (0,0) [rectangle,draw] {
+    \node {\{mapT(``a''): \{``x'': ``y''\},}; \\
+    \node {listT(``a''): [``z'']\}}; \\
+};
+\node (right1) at (8,7) [rectangle,draw] {\{\}};
+\node (right2) at (8,5) [rectangle,draw] {\{``a'': []\}};
+\node (right3) at (8,3) [rectangle,draw] {\{``a'': [``z'']\}};
+\node [matrix] (right4) at (8,0) [rectangle,draw] {
+    \node {\{mapT(``a''): \{``x'': ``y''\},}; \\
+    \node {listT(``a''): [``z'']\}}; \\
+};
+\node (comms)  at (4,2.0) [text=blue] {\footnotesize network communication};
+\draw [thick,->] (left1)  to node [left]  {doc.get(``a'') := \{\};} (left2);
+\draw [thick,->] (left2)  to node [left]  {doc.get(``a'').get(``x'') := ``y'';} (left3);
+\draw [thick,->] (right1) to node [right] {doc.get(``a'') := [];} (right2);
+\draw [thick,->] (right2) to node [right] {doc.get(``a'').idx(0).insert(``z'');} (right3);
+\draw [thick,->] (left3)  to (left4);
+\draw [thick,->] (right3) to (right4);
+\draw [thick,dashed,blue,->] (left3.south)  to [out=270,in=135] (right4.north west);
+\draw [thick,dashed,blue,->] (right3.south) to [out=270,in=45]  (left4.north east);
+\end{tikzpicture}
+\caption{Concurrently assigning values of different types to the same map key.}
+\end{figure*}
+
+\begin{figure*}
+\centering
+\begin{tikzpicture}[auto,scale=0.8]
+\path [draw,dotted] (4,-0.5) -- (4,7.0);
 \node [matrix] (left0) at (0,6) [rectangle,draw] {
     \node {\{``todo'': [\{``title'': ``buy milk'',}; \\
     \node {``done'': false\}]\}}; \\
@@ -265,8 +327,8 @@ The example in Figure~\ref{fig:two-lists} shows two replicas concurrently creati
 \node (left2)  at (0,0) [rectangle,draw] {\{``todo'': [\{``done'': true\}]\}};
 \node (right2) at (8,0) [rectangle,draw] {\{``todo'': [\{``done'': true\}]\}};
 \node (comms)  at (4,1.6) [text=blue] {\footnotesize network communication};
-\draw [thick,->] (left0)  to node [left]  {doc[``todo''].iter.next.delete;} (left1);
-\draw [thick,->] (right0) to node [right] {doc[``todo''].iter.next[``done''] := true;} (right1);
+\draw [thick,->] (left0)  to node [left]  {doc.get(``todo'').idx(1).delete;} (left1);
+\draw [thick,->] (right0) to node [right] {doc.get(``todo'').idx(1).get(``done'') := true;} (right1);
 \draw [thick,->] (left1)  to (left2);
 \draw [thick,->] (right1) to (right2);
 \draw [thick,dashed,blue,->] (left1.south)  to [out=270,in=135] (right2.north west);
@@ -298,9 +360,8 @@ CMD & ::= & \texttt{let} $x$ \texttt{=} EXPR & $x \in \mathrm{VAR}$ \\
 & $|$ & CMD\texttt{;} CMD \vspace{0.5em}\\
 EXPR & ::= & \texttt{doc} \\
 & $|$ & $x$ & $x \in \mathrm{VAR}$ \\
-& $|$ & EXPR\texttt{[}$\mathit{key}$\texttt{]} & $\mathit{key} \in \mathrm{String}$ \\
-& $|$ & EXPR\texttt{.iter} \\
-& $|$ & EXPR\texttt{.next} \\
+& $|$ & EXPR\texttt{.get(}$\mathit{key}$\texttt{)} & $\mathit{key} \in \mathrm{String}$ \\
+& $|$ & EXPR\texttt{.idx(}$i$\texttt{)} & $i \ge 0$ \\
 & $|$ & EXPR\texttt{.keys} \\
 & $|$ & EXPR\texttt{.values} \vspace{0.5em}\\
 VAR & ::= & $x$ & $x \in \mathrm{VarString}$\\
@@ -316,17 +377,15 @@ VAL & ::= & $n$ & $n \in \mathrm{Number}$ \\
 \centering
 \begin{verbatim}
 doc := {};
-let list = doc["shopping"].iter;
-list.insert("eggs");
-let eggs = list.next;
-eggs.insert("milk");
-list.insert("cheese");
+doc.get("shopping") := [];
+let head = doc.get("shopping").idx(0);
+head.insert("eggs");
+let tail = doc.get("shopping").idx(1);
+head.insert("cheese");
+tail.insert("milk");
 
 // Final state:
 {"shopping": ["cheese", "eggs", "milk"]}
-
-eggs.values // evaluates to {"eggs"}
-eggs.next.values // evaluates to {"milk"}
 \end{verbatim}
 \caption{Example of programmatically constructing a JSON document.}\label{fig:make-doc}
 \end{figure}
@@ -400,47 +459,48 @@ A few features of this language deliberately differ from most mainstream program
 \AxiomC{$A_p,\, \mathit{expr} \evalto \mathsf{cursor}(\langle k_1, \dots, k_{n-1} \rangle,\, k_n)$}
 \AxiomC{$k_n \not= \mathsf{head}$}
 \LeftLabel{\textsc{Get}}
-\BinaryInfC{$A_p,\, \mathit{expr}.\texttt{[}\mathit{key}\texttt{]} \evalto
+\BinaryInfC{$A_p,\, \mathit{expr}.\mathsf{get}(\mathit{key}) \evalto
     \mathsf{cursor}(\langle k_1, \dots, k_{n-1}, \mathsf{mapT}(k_n) \rangle,\, \mathit{key})$}
 \end{prooftree}
 
 \begin{prooftree}
 \AxiomC{$A_p,\, \mathit{expr} \evalto \mathsf{cursor}(\langle k_1, \dots, k_{n-1} \rangle,\, k_n)$}
-\LeftLabel{\textsc{Iter}}
-\UnaryInfC{$A_p,\, \mathit{expr}.\mathsf{iter} \evalto
-    \mathsf{cursor}(\langle k_1, \dots, k_{n-1}, \mathsf{listT}(k_n) \rangle,\, \mathsf{head})$}
-\end{prooftree}
-
-\begin{prooftree}
-\AxiomC{$A_p,\, \mathit{expr} \evalto \mathit{cur}$}
-\AxiomC{$A_p,\, \mathit{cur}.\mathsf{next} \evalto \mathit{cur}'$}
-\LeftLabel{$\textsc{Next}_1$}
-\BinaryInfC{$A_p,\, \mathit{expr}.\mathsf{next} \evalto \mathit{cur}'$}
-\end{prooftree}
-
-\begin{prooftree}
-\AxiomC{$\mathit{ctx}(\mathsf{next}(k)) = k' \,\wedge\, k' \not= \mathsf{tail}$}
-\AxiomC{$\mathit{ctx}(\mathsf{pres}(k')) \not= \{\}$}
-\LeftLabel{$\textsc{Next}_2$}
-\BinaryInfC{$\mathit{ctx},\, \mathsf{cursor}(\langle\rangle,\, k).\mathsf{next} \evalto
-    \mathsf{cursor}(\langle\rangle,\, k')$}
-\end{prooftree}
-
-\begin{prooftree}
-\AxiomC{$\mathit{ctx}(\mathsf{next}(k)) = k' \,\wedge\, k' \not= \mathsf{tail}$}
-\AxiomC{$\mathit{ctx}(\mathsf{pres}(k')) = \{\}$}
-\AxiomC{$\mathit{ctx},\, \mathsf{cursor}(\langle\rangle,\, k').\mathsf{next} \evalto \mathit{cur}'$}
-\LeftLabel{$\textsc{Next}_3$}
-\TrinaryInfC{$\mathit{ctx},\, \mathsf{cursor}(\langle\rangle,\, k).\mathsf{next} \evalto \mathit{cur}'$}
+\AxiomC{$A_p,\, \mathsf{cursor}(\langle k_1, \dots, k_{n-1}, \mathsf{listT}(k_n) \rangle,\,
+    \mathsf{head}).\mathsf{idx}(i) \evalto \mathit{cur}'$}
+\LeftLabel{$\textsc{Idx}_1$}
+\BinaryInfC{$A_p,\, \mathit{expr}.\mathsf{idx}(i) \evalto \mathit{cur}'$}
 \end{prooftree}
 
 \begin{prooftree}
 \AxiomC{$k_1 \in \mathrm{dom}(\mathit{ctx})$}
-\AxiomC{$\mathit{ctx}(k_1),\, \mathsf{cursor}(\langle k_2, \dots, k_{n-1} \rangle,\, k_n).\mathsf{next}
+\AxiomC{$\mathit{ctx}(k_1),\, \mathsf{cursor}(\langle k_2, \dots, k_{n-1} \rangle,\, k_n).\mathsf{idx}(i)
     \evalto \mathsf{cursor}(\langle k_2, \dots, k_{n-1} \rangle,\, k_n')$}
-\LeftLabel{$\textsc{Next}_4$}
-\BinaryInfC{$\mathit{ctx},\, \mathsf{cursor}(\langle k_1, k_2, \dots, k_{n-1} \rangle,\, k_n).\mathsf{next}
+\LeftLabel{$\textsc{Idx}_2$}
+\BinaryInfC{$\mathit{ctx},\, \mathsf{cursor}(\langle k_1, k_2, \dots, k_{n-1} \rangle,\, k_n).\mathsf{idx}(i)
     \evalto \mathsf{cursor}(\langle k_1, k_2, \dots, k_{n-1} \rangle,\, k_n')$}
+\end{prooftree}
+
+\begin{prooftree}
+\AxiomC{$i>0 \,\wedge\, \mathit{ctx}(\mathsf{next}(k)) = k' \,\wedge\, k' \not= \mathsf{tail}$}
+\AxiomC{$\mathit{ctx}(\mathsf{pres}(k')) \not= \{\}$}
+\AxiomC{$\mathit{ctx},\, \mathsf{cursor}(\langle\rangle,\, k').\mathsf{idx}(i-1) \evalto \mathit{ctx}'$}
+\LeftLabel{$\textsc{Idx}_3$}
+\TrinaryInfC{$\mathit{ctx},\, \mathsf{cursor}(\langle\rangle,\, k).\mathsf{idx}(i) \evalto \mathit{ctx}'$}
+\end{prooftree}
+
+\begin{prooftree}
+\AxiomC{$i>0 \,\wedge\, \mathit{ctx}(\mathsf{next}(k)) = k' \,\wedge\, k' \not= \mathsf{tail}$}
+\AxiomC{$\mathit{ctx}(\mathsf{pres}(k')) = \{\}$}
+\AxiomC{$\mathit{ctx},\, \mathsf{cursor}(\langle\rangle,\, k').\mathsf{idx}(i) \evalto \mathit{cur}'$}
+\LeftLabel{$\textsc{Idx}_4$}
+\TrinaryInfC{$\mathit{ctx},\, \mathsf{cursor}(\langle\rangle,\, k).\mathsf{idx}(i) \evalto \mathit{cur}'$}
+\end{prooftree}
+
+\begin{prooftree}
+\AxiomC{$i=0$}
+\LeftLabel{$\textsc{Idx}_5$}
+\UnaryInfC{$\mathit{ctx},\, \mathsf{cursor}(\langle\rangle,\, k).\mathsf{idx}(i) \evalto
+    \mathsf{cursor}(\langle\rangle,\, k)$}
 \end{prooftree}
 
 \[ \mathrm{keys}(\mathit{ctx}) = \{\; k \mid
@@ -945,17 +1005,17 @@ The CRDT defined in this paper supports insertion, deletion and assignment opera
 
 \section*{Acknowledgements}
 
-This research was supported by a grant from The Boeing Company. Thank you to Dominic Orchard and Diana Vasile for comments on a draft of this paper.
+This research was supported by a grant from The Boeing Company. Thank you to Dominic Orchard, Diana Vasile, and the anonymous reviewers for comments that improved this paper.
 
 \bibliographystyle{IEEEtran}
 \bibliography{references}{}
 
 \begin{IEEEbiography}[{\includegraphics[width=1in]{mk428.jpg}}]{Martin Kleppmann}
-is a Research Associate in the Computer Laboratory at the University of Cambridge. His current research project, TRVE Data, works towards better security and privacy in cloud applications by applying end-to-end encryption to collaboratively editable application data. His book \emph{Designing Data-Intensive Applications} was published by O'Reilly Media in 2017. Previously, he worked as a software engineer and entrepreneur at several internet companies.
+is a Research Associate in the Computer Laboratory at the University of Cambridge. His current research project, TRVE Data, is working towards better security and privacy in cloud applications by applying end-to-end encryption to collaboratively editable application data. His book \emph{Designing Data-Intensive Applications} was published by O'Reilly Media in 2017. Previously, he worked as a software engineer and entrepreneur at several internet companies, including Rapportive and LinkedIn.
 \end{IEEEbiography}
 
 \begin{IEEEbiography}[{\includegraphics[width=1in]{arb33.jpg}}]{Alastair R. Beresford}
-is a Senior Lecturer in the Computer Laboratory at the University of Cambridge. He obtained his PhD from the University of Cambridge, working at the intersection of mobile computing and computer security. TODO more text
+is a Senior Lecturer in the Computer Laboratory at the University of Cambridge. His research work explores the security and privacy of large-scale distributed systems, with a particular focus on networked mobile devices such as smartphones, tablets and laptops. He looks at the security and privacy of the devices themselves, as well as the security and privacy problems induced by the interaction between mobile devices and cloud-based Internet services.
 \end{IEEEbiography}
 
 \vfill
