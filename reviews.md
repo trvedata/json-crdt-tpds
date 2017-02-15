@@ -331,7 +331,9 @@ instead expanded the informal explanations in Section 3.
 > 
 > Norman Ramsey and El″od Csirmaz. 2001. An algebraic approach to file
 > synchronization. SIGSOFT Softw. Eng. Notes 26, 5 (September 2001), 175-185. 
-> 
+
+Thank you for the references. We have added them to the related work section.
+
 > Nitpicks
 > 
 > * p2, line 33, col 2: “they can only safely make progress if a majority of
